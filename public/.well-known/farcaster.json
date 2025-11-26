@@ -12,7 +12,7 @@
     "name": "Betta Hatchery",
     "homeUrl": "https://bettahatchery.vercel.app",
     "iconUrl": "https://bettahatchery.vercel.app/icon.png",
-    "splashImageUrl": "https://bettahatchery.vercel.app/splash.png",
+    "splashImageUrl": "https://bettahatchery.vercel.app/og.png",
     "splashBackgroundColor": "#009ACF",
     "webhookUrl": "https://bettahatchery.vercel.app/api/webhook",
     "subtitle": "Hatch your Betta egg",
