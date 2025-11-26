@@ -1,18 +1,17 @@
-"use client";
-
+// src/lib/wagmi.ts
 import { createConfig, http } from "wagmi";
 import { base } from "wagmi/chains";
+import { injected } from "wagmi/connectors";
+
+// Use a public RPC URL for clients
+const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 
 export const wagmiConfig = createConfig({
   chains: [base],
-
-  // No connectors because MiniApp uses Farcaster Wallet
-  connectors: [],
-
-  // Correct transport for Wagmi 1.x
-  transport: {
-    [base.id]: http(process.env.NEXT_PUBLIC_RPC_URL!),
-  },
-
   ssr: true,
+  connectors: [injected()],
+  // NOTE: property name must be "transports" for wagmi v1
+  transports: {
+    [base.id]: http(rpcUrl),
+  },
 });
