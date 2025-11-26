@@ -1,0 +1,43 @@
+{
+  "name": "betta-miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@base-org/account": "^2.4.2",
+    "@coinbase/wallet-sdk": "^4.3.7",
+    "@farcaster/auth-kit": "^0.8.1",
+    "@farcaster/core": "^0.18.9",
+    "@farcaster/miniapp-sdk": "^0.2.1",
+    "@farcaster/quick-auth": "^0.0.8",
+    "@gemini-wallet/core": "^0.3.2",
+    "@metamask/sdk": "^0.33.1",
+    "@safe-global/safe-apps-provider": "^0.18.6",
+    "@safe-global/safe-apps-sdk": "^9.1.0",
+    "@tanstack/react-query": "^5.90.11",
+    "@wagmi/core": "^3.0.0",
+    "@walletconnect/ethereum-provider": "^2.21.10",
+    "ethers": "^6.15.0",
+    "next": "16.0.4",
+    "porto": "^0.2.37",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "viem": "^2.40.3",
+    "wagmi": "^3.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
