@@ -1,0 +1,32 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "baseBuilder": {
+    "ownerAddress": "0x591cE0cBD9aC7663c7C5ce5e7850129b4d389651"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Betta Hatchery",
+    "homeUrl": "https://bettahatchery.vercel.app",
+    "iconUrl": "https://bettahatchery.vercel.app/icon.png",
+    "splashImageUrl": "https://bettahatchery.vercel.app/og.png",
+    "splashBackgroundColor": "#009ACF",
+    "webhookUrl": "https://bettahatchery.vercel.app/api/webhook",
+    "subtitle": "Hatch your Betta egg",
+    "description": "Hatch a Betta egg using your Farcaster wallet. Each FID can hatch only once.",
+    "screenshotUrls": [
+      "https://bettahatchery.vercel.app/og.png"
+    ],
+    "primaryCategory": "games",
+    "tags": ["nft", "game", "base"],
+    "heroImageUrl": "https://bettahatchery.vercel.app/og.png",
+    "tagline": "Hatch, collect, and play.",
+    "ogTitle": "Betta Hatchery",
+    "ogDescription": "Hatch a Betta egg on Base directly from Farcaster.",
+    "ogImageUrl": "https://bettahatchery.vercel.app/og.png",
+    "noindex": false
+  }
+}
