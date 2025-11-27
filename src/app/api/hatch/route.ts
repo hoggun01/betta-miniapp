@@ -1,10 +1,15 @@
 // src/app/api/hatch/route.ts
 import { NextResponse } from "next/server";
-import { createPublicClient, createWalletClient, http } from "viem";
+import {
+  createPublicClient,
+  http,
+  encodePacked,
+  keccak256,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
-// Minimal ABI for BettaHatcheryV2
+// ABI includes mintPrice + usedFid
 const BETTA_HATCHERY_ABI = [
   {
     inputs: [
@@ -23,28 +28,33 @@ const BETTA_HATCHERY_ABI = [
     stateMutability: "view",
     type: "function",
   },
+  {
+    inputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    name: "usedFid",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
 ] as const;
 
-// Environment variables
+// Env
 const RPC_URL = process.env.RPC_URL;
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const BETTA_CONTRACT_ADDRESS = process.env
   .NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}` | undefined;
+const TRUSTED_SIGNER_PRIVATE_KEY = process.env
+  .TRUSTED_SIGNER_PRIVATE_KEY as `0x${string}` | undefined;
 
 if (!RPC_URL) {
   console.warn("[HATCH] Missing RPC_URL in env");
 }
-if (!PRIVATE_KEY) {
-  console.warn("[HATCH] Missing PRIVATE_KEY in env");
-}
 if (!BETTA_CONTRACT_ADDRESS) {
   console.warn("[HATCH] Missing NEXT_PUBLIC_BETTA_CONTRACT in env");
 }
+if (!TRUSTED_SIGNER_PRIVATE_KEY) {
+  console.warn("[HATCH] Missing TRUSTED_SIGNER_PRIVATE_KEY in env");
+}
 
-const account = PRIVATE_KEY
-  ? privateKeyToAccount(PRIVATE_KEY as `0x${string}`)
-  : undefined;
-
+// Clients
 const publicClient = RPC_URL
   ? createPublicClient({
       chain: base,
@@ -52,123 +62,113 @@ const publicClient = RPC_URL
     })
   : null;
 
-const walletClient =
-  RPC_URL && account
-    ? createWalletClient({
-        chain: base,
-        transport: http(RPC_URL),
-        account,
-      })
-    : null;
+const signerAccount = TRUSTED_SIGNER_PRIVATE_KEY
+  ? privateKeyToAccount(TRUSTED_SIGNER_PRIVATE_KEY)
+  : undefined;
 
-// POST /api/hatch
+// POST /api/hatch -> returns signature + mintPrice
 export async function POST(req: Request) {
   try {
-    // Basic server config checks
-    if (!publicClient || !walletClient || !account || !BETTA_CONTRACT_ADDRESS) {
+    if (!publicClient || !signerAccount || !BETTA_CONTRACT_ADDRESS) {
       return NextResponse.json(
         {
           ok: false,
-          code: "SERVER_NOT_CONFIGURED",
-          error: "Hatch server is not fully configured.",
+          error: "SERVER_NOT_CONFIGURED",
           debug: {
             hasRpcUrl: !!RPC_URL,
-            hasPrivateKey: !!PRIVATE_KEY,
             hasContractAddress: !!BETTA_CONTRACT_ADDRESS,
-            hasAccount: !!account,
-            hasPublicClient: !!publicClient,
-            hasWalletClient: !!walletClient,
+            hasTrustedKey: !!TRUSTED_SIGNER_PRIVATE_KEY,
           },
         },
-        { status: 200 }
+        { status: 500 }
       );
     }
 
     const body = await req.json().catch(() => ({} as any));
-
-    // Expect fid and signature from client for now
     const fidRaw = body?.fid;
-    const signatureRaw = body?.signature;
+    const addressRaw = body?.address as string | undefined;
 
     if (fidRaw === undefined || fidRaw === null) {
       return NextResponse.json(
-        { ok: false, code: "MISSING_FID", error: "Missing fid in request body." },
-        { status: 200 }
+        { ok: false, error: "MISSING_FID" },
+        { status: 400 }
       );
     }
 
-    if (!signatureRaw || typeof signatureRaw !== "string") {
+    if (!addressRaw || typeof addressRaw !== "string") {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_ADDRESS" },
+        { status: 400 }
+      );
+    }
+
+    if (!addressRaw.match(/^0x[0-9a-fA-F]{40}$/)) {
+      return NextResponse.json(
+        { ok: false, error: "INVALID_ADDRESS" },
+        { status: 400 }
+      );
+    }
+
+    const fid = BigInt(fidRaw);
+    const userAddress = addressRaw as `0x${string}`;
+
+    // Check if FID already used onchain
+    const alreadyUsed = (await publicClient.readContract({
+      address: BETTA_CONTRACT_ADDRESS,
+      abi: BETTA_HATCHERY_ABI,
+      functionName: "usedFid",
+      args: [fid],
+    })) as boolean;
+
+    if (alreadyUsed) {
       return NextResponse.json(
         {
           ok: false,
-          code: "MISSING_SIGNATURE",
-          error: "Missing signature in request body.",
+          code: "FID_ALREADY_USED",
+          error: "This FID has already minted.",
         },
         { status: 200 }
       );
     }
 
-    const fid = BigInt(fidRaw);
-    const signature = signatureRaw as `0x${string}`;
-
-    // Read mintPrice from contract
+    // Read mintPrice
     const mintPrice = (await publicClient.readContract({
       address: BETTA_CONTRACT_ADDRESS,
       abi: BETTA_HATCHERY_ABI,
       functionName: "mintPrice",
     })) as bigint;
 
-    // Simulate transaction
-    const { request } = await publicClient.simulateContract({
-      address: BETTA_CONTRACT_ADDRESS,
-      abi: BETTA_HATCHERY_ABI,
-      functionName: "mint",
-      args: [fid, signature],
-      account,
-      value: mintPrice,
-    });
+    // messageHash = keccak256(abi.encodePacked(address(this), msg.sender, fid))
+    const messageHash = keccak256(
+      encodePacked(
+        ["address", "address", "uint256"],
+        [BETTA_CONTRACT_ADDRESS, userAddress, fid]
+      )
+    );
 
-    // Send real transaction
-    const hash = await walletClient.writeContract(request);
+    // Sign as trustedSigner (EIP-191 personal_sign of 32-byte hash)
+    const signature = await signerAccount.signMessage({
+      message: { raw: messageHash },
+    });
 
     return NextResponse.json(
       {
         ok: true,
-        tx: hash,
         fid: fid.toString(),
-        value: mintPrice.toString(),
+        address: userAddress,
+        mintPrice: mintPrice.toString(),
+        signature,
       },
       { status: 200 }
     );
   } catch (error: any) {
     console.error("HATCH_ROUTE_ERROR", error);
-
-    const msg: string =
-      error?.shortMessage ||
-      error?.message ||
-      error?.cause?.shortMessage ||
-      "HATCH_ROUTE_ERROR";
-
-    // Friendly handling for "wallet already minted" revert
-    if (msg.includes("Wallet already minted")) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "WALLET_ALREADY_MINTED",
-          error: "Wallet already minted",
-        },
-        { status: 200 }
-      );
-    }
-
-    // Generic error for other cases
     return NextResponse.json(
       {
         ok: false,
-        code: "INTERNAL_ERROR",
-        error: msg,
+        error: error?.shortMessage || error?.message || "HATCH_ROUTE_ERROR",
       },
-      { status: 200 }
+      { status: 500 }
     );
   }
 }
@@ -177,6 +177,6 @@ export async function POST(req: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    message: "Hatch route is running (onchain, requires fid + signature)",
+    message: "Hatch route is running (sign-only, user wallet sends tx).",
   });
 }

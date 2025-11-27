@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
+import { encodeFunctionData } from "viem";
 
 type Phase = "idle" | "hatching" | "revealed" | "error";
 type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY";
@@ -57,6 +58,23 @@ const RARITY_CONFIG: Record<Rarity, RarityConfig> = {
   },
 };
 
+const BETTA_CONTRACT_ADDRESS = process.env
+  .NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}`;
+
+// Minimal ABI for client-side mint encoding
+const BETTA_HATCHERY_ABI = [
+  {
+    inputs: [
+      { internalType: "uint256", name: "fid", type: "uint256" },
+      { internalType: "bytes", name: "signature", type: "bytes" },
+    ],
+    name: "mint",
+    outputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+    stateMutability: "payable",
+    type: "function",
+  },
+] as const;
+
 function pickRandomRarity(): Rarity {
   const roll = Math.random() * 100;
   if (roll < 55) return "COMMON";
@@ -76,18 +94,6 @@ export default function Home() {
   const isHatching = phase === "hatching";
   const displayProgress = phase === "revealed" ? 100 : Math.round(progress);
 
-  // Tell Farcaster host that the mini app UI is ready, so it can hide the splash screen
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await sdk.actions.ready();
-      } catch (err) {
-        console.error("Miniapp ready() failed", err);
-      }
-    };
-    init();
-  }, []);
-
   // Farcaster + OpenSea config
   const farcasterUsername = "aconx";
   const farcasterFid = 250139;
@@ -100,6 +106,14 @@ export default function Home() {
   const openseaUrl =
     "https://opensea.io/collection/betta-hatchery-322178410";
 
+  useEffect(() => {
+    sdk.actions
+      .ready()
+      .catch((err) => {
+        console.error("Miniapp ready() failed", err);
+      });
+  }, []);
+
   function handleFollowCreator() {
     if (typeof window !== "undefined") {
       window.location.href = warpcastProfileDeepLink;
@@ -107,6 +121,21 @@ export default function Home() {
         window.open(warpcastProfileUrl, "_blank");
       }, 400);
     }
+  }
+
+  async function getUserWallet() {
+    const provider = await sdk.wallet.getEthereumProvider();
+    const accounts = (await provider.request({
+      method: "eth_requestAccounts",
+      params: [],
+    })) as string[];
+
+    if (!accounts || accounts.length === 0) {
+      throw new Error("No wallet accounts found");
+    }
+
+    const address = accounts[0] as `0x${string}`;
+    return { provider, address };
   }
 
   async function handleHatch() {
@@ -119,80 +148,88 @@ export default function Home() {
     try {
       const inMiniApp = await sdk.isInMiniApp();
       if (!inMiniApp) {
-        setError("This miniapp must be opened inside Warpcast.");
+        setError("This miniapp must be opened inside a Farcaster client.");
         setPhase("error");
-        setProgress(0);
         return;
       }
 
-      // Await context to get user fid
       const context = await sdk.context;
       const fid = context.user?.fid;
       if (!fid) {
-        setError("Cannot read FID from Farcaster context.");
+        setError("Missing Farcaster FID in context.");
         setPhase("error");
-        setProgress(0);
+        return;
+      }
+
+      if (!BETTA_CONTRACT_ADDRESS) {
+        setError("Contract address is not configured.");
+        setPhase("error");
         return;
       }
 
       setPhase("hatching");
-      setProgress(100);
+      setProgress(25);
 
-      const res = await fetch("/api/hatch", {
+      // Get user wallet from Farcaster Wallet
+      const { provider, address } = await getUserWallet();
+      setProgress(45);
+
+      // Ask backend for signature + mintPrice
+      const signRes = await fetch("/api/hatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fid,
-          // Temporary placeholder signature.
-          // Replace with a real Farcaster / wallet signature flow later.
-          signature: "0x",
+          address,
         }),
       });
 
-      let data: any = null;
-      try {
-        data = await res.json();
-      } catch {
-        setError("Hatch failed: invalid server response.");
+      const signData = await signRes.json();
+
+      if (!signRes.ok || !signData.ok) {
+        const msg =
+          signData?.error ||
+          "Hatch preparation failed (signature/mintPrice error)";
+        setError(msg);
         setPhase("error");
         setProgress(0);
         return;
       }
 
-      if (!data || data.ok === false) {
-        const msg: string =
-          (typeof data?.error === "string" && data.error) || "Hatch failed.";
+      setProgress(70);
 
-        if (
-          msg.includes("Wallet already minted") ||
-          data.code === "WALLET_ALREADY_MINTED"
-        ) {
-          setError(
-            "This wallet has already minted a Betta. Each FID can only hatch once."
-          );
-        } else if (data.code === "SERVER_NOT_CONFIGURED") {
-          setError("Hatch server is not configured correctly.");
-        } else {
-          setError(msg);
-        }
+      const mintPriceBigInt = BigInt(signData.mintPrice as string);
+      const signature = signData.signature as `0x${string}`;
+      const fidForTx = BigInt(signData.fid as string);
 
-        setPhase("error");
-        setProgress(0);
-        return;
-      }
+      // Encode mint(fid, signature)
+      const data = encodeFunctionData({
+        abi: BETTA_HATCHERY_ABI,
+        functionName: "mint",
+        args: [fidForTx, signature],
+      });
 
-      const hash =
-        (data.tx && (data.tx.hash || data.tx)) || data.hash || null;
-      if (hash) {
-        setTxHash(String(hash));
-      }
+      // Send transaction from user's wallet on Base
+      const tx = await provider.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            to: BETTA_CONTRACT_ADDRESS,
+            data,
+            value: `0x${mintPriceBigInt.toString(16)}`,
+          },
+        ],
+      });
+
+      setTxHash(String(tx));
+      setProgress(100);
 
       const picked = pickRandomRarity();
       setRarity(picked);
       setPhase("revealed");
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || "Unexpected error.");
+      setError(err?.message || "Unexpected error while hatching.");
       setPhase("error");
       setProgress(0);
     }
