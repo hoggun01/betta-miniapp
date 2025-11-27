@@ -93,7 +93,7 @@ export default function Home() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // hasFish = wallet already owns at least 1 Betta NFT
+  // hasFish = wallet already owns at least 1 Betta NFT (used only for info text)
   const [hasFish, setHasFish] = useState<boolean | null>(null);
   const [checkingFish, setCheckingFish] = useState<boolean>(false);
 
@@ -475,23 +475,28 @@ export default function Home() {
                           Hatch
                         </span>{" "}
                         to reveal which Betta is hiding inside this underwater
-                        egg.
+                        egg. Or jump straight into your aquarium if you already
+                        own a Betta NFT.
                       </p>
 
-                      {/* PLAY button on front page if user already owns any Betta NFT */}
+                      {/* PLAY is always available – aquarium will show empty if no NFTs */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.location.href = "/aquarium";
+                        }}
+                        className="mt-2 inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm font-semibold tracking-wide bg-emerald-300 text-sky-950 shadow-[0_8px_28px_rgba(16,185,129,0.8)] hover:bg-emerald-200 transition-transform duration-150 active:translate-y-[1px]"
+                      >
+                        PLAY
+                      </button>
+
                       {hasFish && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            window.location.href = "/aquarium";
-                          }}
-                          className="mt-1 inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm font-semibold tracking-wide bg-emerald-300 text-sky-950 shadow-[0_8px_28px_rgba(16,185,129,0.8)] hover:bg-emerald-200 transition-transform duration-150 active:translate-y-[1px]"
-                        >
-                          PLAY WITH YOUR FISH
-                        </button>
+                        <p className="text-[10px] text-emerald-200/80 mt-1 text-center">
+                          We detected Betta NFTs in your wallet. Your aquarium
+                          will display them.
+                        </p>
                       )}
 
-                      {/* Optional info while checking wallet */}
                       {hasFish === null && checkingFish && (
                         <p className="text-[10px] text-cyan-100/70 mt-1">
                           Checking your wallet for Betta NFTs...
