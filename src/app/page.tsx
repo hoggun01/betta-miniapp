@@ -76,13 +76,16 @@ export default function Home() {
   const isHatching = phase === "hatching";
   const displayProgress = phase === "revealed" ? 100 : Math.round(progress);
 
-  // Tell Warpcast that the mini app UI is ready, so it can hide the splash screen
+  // Tell Farcaster host that the mini app UI is ready, so it can hide the splash screen
   useEffect(() => {
-    sdk
-      .ready()
-      .catch((err) => {
+    const init = async () => {
+      try {
+        await sdk.actions.ready();
+      } catch (err) {
         console.error("Miniapp ready() failed", err);
-      });
+      }
+    };
+    init();
   }, []);
 
   // Farcaster + OpenSea config
