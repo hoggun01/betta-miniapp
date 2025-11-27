@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
 
 type Phase = "idle" | "hatching" | "revealed" | "error";
@@ -76,6 +76,15 @@ export default function Home() {
   const isHatching = phase === "hatching";
   const displayProgress = phase === "revealed" ? 100 : Math.round(progress);
 
+  // Tell Warpcast that the mini app UI is ready, so it can hide the splash screen
+  useEffect(() => {
+    sdk
+      .ready()
+      .catch((err) => {
+        console.error("Miniapp ready() failed", err);
+      });
+  }, []);
+
   // Farcaster + OpenSea config
   const farcasterUsername = "aconx";
   const farcasterFid = 250139;
@@ -140,8 +149,7 @@ export default function Home() {
       let data: any = null;
       try {
         data = await res.json();
-      } catch (e) {
-        // If response is not JSON
+      } catch {
         setError("Hatch failed: invalid server response.");
         setPhase("error");
         setProgress(0);
@@ -150,13 +158,17 @@ export default function Home() {
 
       if (!data || data.ok === false) {
         const msg: string =
-          (typeof data?.error === "string" && data.error) ||
-          "Hatch failed.";
+          (typeof data?.error === "string" && data.error) || "Hatch failed.";
 
-        if (msg.includes("Wallet already minted")) {
+        if (
+          msg.includes("Wallet already minted") ||
+          data.code === "WALLET_ALREADY_MINTED"
+        ) {
           setError(
             "This wallet has already minted a Betta. Each FID can only hatch once."
           );
+        } else if (data.code === "SERVER_NOT_CONFIGURED") {
+          setError("Hatch server is not configured correctly.");
         } else {
           setError(msg);
         }
