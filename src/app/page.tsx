@@ -111,7 +111,9 @@ export default function Home() {
         return;
       }
 
-      const fid = sdk.context.user?.fid;
+      // Await context to get user fid
+      const context = await sdk.context;
+      const fid = context.user?.fid;
       if (!fid) {
         setError("MISSING_CONTEXT_FID");
         return;
