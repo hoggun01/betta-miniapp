@@ -2,22 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const APP_URL = "https://bettahatchery.vercel.app";
-
-const MINIAPP_EMBED = {
-  version: "1",
-  imageUrl: `${APP_URL}/og.png`,
-  button: {
-    title: "Betta Hatchery",
-    action: {
-      type: "launch_frame",
-      name: "Betta Hatchery",
-      url: APP_URL,
-      splashImageUrl: `${APP_URL}/icon.png`,
-      splashBackgroundColor: "#009ACF",
-    },
-  },
-} as const;
+const APP_URL = "https://bettahatchery.xyz";
 
 export const metadata: Metadata = {
   title: "Betta Hatchery",
@@ -54,17 +39,7 @@ export default function RootLayout({
         {/* Basic meta */}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#020617" />
-
-        {/* Farcaster Mini App embed */}
-        <meta
-          name="fc:miniapp"
-          content={JSON.stringify(MINIAPP_EMBED)}
-        />
-        {/* Backward compatibility */}
-        <meta
-          name="fc:frame"
-          content={JSON.stringify(MINIAPP_EMBED)}
-        />
+        {/* No Farcaster embed meta for now */}
       </head>
       <body className="min-h-screen bg-slate-950 text-slate-50 antialiased">
         {children}
