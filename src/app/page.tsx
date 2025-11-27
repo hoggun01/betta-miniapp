@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
-import { encodeFunctionData } from "viem";
+import { encodeFunctionData, createPublicClient, http } from "viem";
+import { base } from "viem/chains";
 
 type Phase = "idle" | "hatching" | "revealed" | "error";
 type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY";
@@ -61,7 +62,10 @@ const RARITY_CONFIG: Record<Rarity, RarityConfig> = {
 const BETTA_CONTRACT_ADDRESS = process.env
   .NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}`;
 
-// Minimal ABI for client-side mint encoding
+const RPC_URL =
+  process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
+
+// ABI for mint + tokensOfOwner (for checking existing NFTs)
 const BETTA_HATCHERY_ABI = [
   {
     inputs: [
@@ -73,6 +77,13 @@ const BETTA_HATCHERY_ABI = [
     stateMutability: "payable",
     type: "function",
   },
+  {
+    inputs: [{ internalType: "address", name: "owner", type: "address" }],
+    name: "tokensOfOwner",
+    outputs: [{ internalType: "uint256[]", name: "tokenIds", type: "uint256[]" }],
+    stateMutability: "view",
+    type: "function",
+  },
 ] as const;
 
 export default function Home() {
@@ -81,6 +92,10 @@ export default function Home() {
   const [rarity, setRarity] = useState<Rarity | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // hasFish = wallet already owns at least 1 Betta NFT
+  const [hasFish, setHasFish] = useState<boolean | null>(null);
+  const [checkingFish, setCheckingFish] = useState<boolean>(false);
 
   const isHatching = phase === "hatching";
   const displayProgress = phase === "revealed" ? 100 : Math.round(progress);
@@ -103,6 +118,74 @@ export default function Home() {
       .catch((err) => {
         console.error("Miniapp ready() failed", err);
       });
+  }, []);
+
+  // Silent check: does current Farcaster wallet already own a Betta NFT?
+  useEffect(() => {
+    let cancelled = false;
+
+    async function detectExistingFish() {
+      try {
+        setCheckingFish(true);
+
+        const inMiniApp = await sdk.isInMiniApp();
+        if (!inMiniApp) {
+          if (!cancelled) {
+            setHasFish(false);
+          }
+          return;
+        }
+
+        const provider = await sdk.wallet.getEthereumProvider();
+        if (!provider || !BETTA_CONTRACT_ADDRESS) {
+          if (!cancelled) setHasFish(false);
+          return;
+        }
+
+        const accounts = (await (provider as any).request({
+          method: "eth_accounts",
+          params: [],
+        })) as string[];
+
+        if (!accounts || accounts.length === 0) {
+          if (!cancelled) setHasFish(false);
+          return;
+        }
+
+        const address = accounts[0] as `0x${string}`;
+
+        const client = createPublicClient({
+          chain: base,
+          transport: http(RPC_URL),
+        });
+
+        const tokenIds = (await client.readContract({
+          address: BETTA_CONTRACT_ADDRESS,
+          abi: BETTA_HATCHERY_ABI,
+          functionName: "tokensOfOwner",
+          args: [address],
+        })) as bigint[];
+
+        if (!cancelled) {
+          setHasFish(tokenIds.length > 0);
+        }
+      } catch (err) {
+        console.error("detectExistingFish error:", err);
+        if (!cancelled) {
+          setHasFish(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingFish(false);
+        }
+      }
+    }
+
+    detectExistingFish();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function handleFollowCreator() {
@@ -262,6 +345,7 @@ export default function Home() {
       setRarity(finalRarity);
       setProgress(100);
       setPhase("revealed");
+      setHasFish(true); // after successful mint, mark that user has at least 1 fish
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Unexpected error while hatching.");
@@ -384,14 +468,36 @@ export default function Home() {
                   </div>
 
                   {!rarityConfig && (
-                    <p className="mt-1 text-xs md:text-sm text-cyan-50/85 text-center max-w-xs">
-                      Press{" "}
-                      <span className="font-semibold text-teal-200">
-                        Hatch
-                      </span>{" "}
-                      to reveal which Betta is hiding inside this underwater
-                      egg.
-                    </p>
+                    <>
+                      <p className="mt-1 text-xs md:text-sm text-cyan-50/85 text-center max-w-xs">
+                        Press{" "}
+                        <span className="font-semibold text-teal-200">
+                          Hatch
+                        </span>{" "}
+                        to reveal which Betta is hiding inside this underwater
+                        egg.
+                      </p>
+
+                      {/* PLAY button on front page if user already owns any Betta NFT */}
+                      {hasFish && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.href = "/aquarium";
+                          }}
+                          className="mt-1 inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm font-semibold tracking-wide bg-emerald-300 text-sky-950 shadow-[0_8px_28px_rgba(16,185,129,0.8)] hover:bg-emerald-200 transition-transform duration-150 active:translate-y-[1px]"
+                        >
+                          PLAY WITH YOUR FISH
+                        </button>
+                      )}
+
+                      {/* Optional info while checking wallet */}
+                      {hasFish === null && checkingFish && (
+                        <p className="text-[10px] text-cyan-100/70 mt-1">
+                          Checking your wallet for Betta NFTs...
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
