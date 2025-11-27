@@ -69,8 +69,20 @@ const walletClient =
 export async function POST(req: Request) {
   try {
     if (!publicClient || !walletClient || !account) {
+      // Debug info (booleans only, no secrets)
       return NextResponse.json(
-        { ok: false, error: "SERVER_NOT_CONFIGURED" },
+        {
+          ok: false,
+          error: "SERVER_NOT_CONFIGURED",
+          debug: {
+            hasRpcUrl: !!RPC_URL,
+            hasPrivateKey: !!PRIVATE_KEY,
+            hasContractAddress: !!BETTA_CONTRACT_ADDRESS,
+            hasAccount: !!account,
+            hasPublicClient: !!publicClient,
+            hasWalletClient: !!walletClient,
+          },
+        },
         { status: 500 }
       );
     }
