@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { sdk } from "@farcaster/miniapp-sdk";
 
 type Phase = "idle" | "hatching" | "revealed" | "error";
 type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY";
@@ -74,6 +75,19 @@ export default function Home() {
 
   const isHatching = phase === "hatching";
   const displayProgress = phase === "revealed" ? 100 : Math.round(progress);
+
+  // Miniapp ready: tell Farcaster to hide splash and show UI
+  useEffect(() => {
+    async function markMiniappReady() {
+      try {
+        await sdk.actions.ready();
+      } catch (err) {
+        console.error("Failed to signal miniapp ready", err);
+      }
+    }
+
+    markMiniappReady();
+  }, []);
 
   // Farcaster + OpenSea config (change username + fid to yours)
   const farcasterUsername = "hoggun"; // TODO: change to your Farcaster username
