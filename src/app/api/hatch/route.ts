@@ -1,10 +1,6 @@
 // src/app/api/hatch/route.ts
 import { NextResponse } from "next/server";
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-} from "viem";
+import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
@@ -68,12 +64,13 @@ const walletClient =
 // POST /api/hatch
 export async function POST(req: Request) {
   try {
-    if (!publicClient || !walletClient || !account) {
-      // Debug info (booleans only, no secrets)
+    // Basic server config checks
+    if (!publicClient || !walletClient || !account || !BETTA_CONTRACT_ADDRESS) {
       return NextResponse.json(
         {
           ok: false,
-          error: "SERVER_NOT_CONFIGURED",
+          code: "SERVER_NOT_CONFIGURED",
+          error: "Hatch server is not fully configured.",
           debug: {
             hasRpcUrl: !!RPC_URL,
             hasPrivateKey: !!PRIVATE_KEY,
@@ -83,14 +80,7 @@ export async function POST(req: Request) {
             hasWalletClient: !!walletClient,
           },
         },
-        { status: 500 }
-      );
-    }
-
-    if (!BETTA_CONTRACT_ADDRESS) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_CONTRACT_ADDRESS" },
-        { status: 500 }
+        { status: 200 }
       );
     }
 
@@ -102,15 +92,19 @@ export async function POST(req: Request) {
 
     if (fidRaw === undefined || fidRaw === null) {
       return NextResponse.json(
-        { ok: false, error: "MISSING_FID" },
-        { status: 400 }
+        { ok: false, code: "MISSING_FID", error: "Missing fid in request body." },
+        { status: 200 }
       );
     }
 
     if (!signatureRaw || typeof signatureRaw !== "string") {
       return NextResponse.json(
-        { ok: false, error: "MISSING_SIGNATURE" },
-        { status: 400 }
+        {
+          ok: false,
+          code: "MISSING_SIGNATURE",
+          error: "Missing signature in request body.",
+        },
+        { status: 200 }
       );
     }
 
@@ -137,21 +131,44 @@ export async function POST(req: Request) {
     // Send real transaction
     const hash = await walletClient.writeContract(request);
 
-    return NextResponse.json({
-      ok: true,
-      tx: hash,
-      fid: fid.toString(),
-      value: mintPrice.toString(),
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        tx: hash,
+        fid: fid.toString(),
+        value: mintPrice.toString(),
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
     console.error("HATCH_ROUTE_ERROR", error);
 
+    const msg: string =
+      error?.shortMessage ||
+      error?.message ||
+      error?.cause?.shortMessage ||
+      "HATCH_ROUTE_ERROR";
+
+    // Friendly handling for "wallet already minted" revert
+    if (msg.includes("Wallet already minted")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "WALLET_ALREADY_MINTED",
+          error: "Wallet already minted",
+        },
+        { status: 200 }
+      );
+    }
+
+    // Generic error for other cases
     return NextResponse.json(
       {
         ok: false,
-        error: error?.shortMessage || error?.message || "HATCH_ROUTE_ERROR",
+        code: "INTERNAL_ERROR",
+        error: msg,
       },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }

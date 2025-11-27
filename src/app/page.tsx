@@ -107,7 +107,9 @@ export default function Home() {
     try {
       const inMiniApp = await sdk.isInMiniApp();
       if (!inMiniApp) {
-        setError("NOT_IN_MINIAPP");
+        setError("This miniapp must be opened inside Warpcast.");
+        setPhase("error");
+        setProgress(0);
         return;
       }
 
@@ -115,7 +117,9 @@ export default function Home() {
       const context = await sdk.context;
       const fid = context.user?.fid;
       if (!fid) {
-        setError("MISSING_CONTEXT_FID");
+        setError("Cannot read FID from Farcaster context.");
+        setPhase("error");
+        setProgress(0);
         return;
       }
 
@@ -133,10 +137,33 @@ export default function Home() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch (e) {
+        // If response is not JSON
+        setError("Hatch failed: invalid server response.");
+        setPhase("error");
+        setProgress(0);
+        return;
+      }
 
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Hatch failed");
+      if (!data || data.ok === false) {
+        const msg: string =
+          (typeof data?.error === "string" && data.error) ||
+          "Hatch failed.";
+
+        if (msg.includes("Wallet already minted")) {
+          setError(
+            "This wallet has already minted a Betta. Each FID can only hatch once."
+          );
+        } else {
+          setError(msg);
+        }
+
+        setPhase("error");
+        setProgress(0);
+        return;
       }
 
       const hash =
@@ -150,7 +177,7 @@ export default function Home() {
       setPhase("revealed");
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Unexpected error");
+      setError(err?.message || "Unexpected error.");
       setPhase("error");
       setProgress(0);
     }
