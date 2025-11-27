@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
 
 type Phase = "idle" | "hatching" | "revealed" | "error";
@@ -76,22 +76,9 @@ export default function Home() {
   const isHatching = phase === "hatching";
   const displayProgress = phase === "revealed" ? 100 : Math.round(progress);
 
-  // Miniapp ready: tell Farcaster to hide splash and show UI
-  useEffect(() => {
-    async function markMiniappReady() {
-      try {
-        await sdk.actions.ready();
-      } catch (err) {
-        console.error("Failed to signal miniapp ready", err);
-      }
-    }
-
-    markMiniappReady();
-  }, []);
-
-  // Farcaster + OpenSea config (change username + fid to yours)
-  const farcasterUsername = "hoggun"; // TODO: change to your Farcaster username
-  const farcasterFid = 250139; // TODO: change to your FID
+  // Farcaster + OpenSea config
+  const farcasterUsername = "aconx";
+  const farcasterFid = 250139;
   const warpcastProfileUrl = `https://warpcast.com/${farcasterUsername}`;
   const warpcastProfileDeepLink = `warpcast://profiles/${farcasterFid}`;
   const shareText = encodeURIComponent(
@@ -103,10 +90,7 @@ export default function Home() {
 
   function handleFollowCreator() {
     if (typeof window !== "undefined") {
-      // Deep link for Warpcast apps
       window.location.href = warpcastProfileDeepLink;
-
-      // Fallback to web profile if deep link is not handled
       setTimeout(() => {
         window.open(warpcastProfileUrl, "_blank");
       }, 400);
@@ -120,11 +104,33 @@ export default function Home() {
     setTxHash(null);
     setRarity(null);
 
-    setPhase("hatching");
-    setProgress(100);
-
     try {
-      const res = await fetch("/api/hatch", { method: "POST" });
+      const inMiniApp = await sdk.isInMiniApp();
+      if (!inMiniApp) {
+        setError("NOT_IN_MINIAPP");
+        return;
+      }
+
+      const fid = sdk.context.user?.fid;
+      if (!fid) {
+        setError("MISSING_CONTEXT_FID");
+        return;
+      }
+
+      setPhase("hatching");
+      setProgress(100);
+
+      const res = await fetch("/api/hatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fid,
+          // Temporary placeholder signature.
+          // Replace with a real Farcaster / wallet signature flow later.
+          signature: "0x",
+        }),
+      });
+
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
@@ -153,13 +159,11 @@ export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8 text-cyan-50">
       <div className="relative max-w-5xl w-full">
-        {/* main card - transparent glass with neon outline */}
         <div className="relative z-10 rounded-[32px] border border-cyan-200/40 bg-transparent backdrop-blur-sm overflow-hidden">
-          {/* white neon outerline (thicker & brighter) */}
           <div className="pointer-events-none absolute inset-0 rounded-[32px] border-2 border-white/60 shadow-[0_0_65px_rgba(248,250,252,0.9)]" />
 
           <div className="relative grid md:grid-cols-2 md:items-center gap-6 md:gap-10 p-6 md:p-10">
-            {/* left: copy and button */}
+            {/* LEFT SIDE */}
             <div className="flex flex-col justify-center space-y-6">
               <div>
                 <p className="text-xs uppercase tracking-[0.35em] text-teal-100/90 mb-2">
@@ -242,9 +246,9 @@ export default function Home() {
               </p>
             </div>
 
-            {/* right: egg or card */}
+            {/* RIGHT SIDE */}
             <div className="relative flex items-center justify-center">
-              {/* EGG STATE (before reveal) */}
+              {/* EGG STATE */}
               {phase !== "revealed" && (
                 <div className="relative flex flex-col items-center gap-5">
                   <div className="relative">
@@ -276,10 +280,9 @@ export default function Home() {
                 </div>
               )}
 
-              {/* CARD STATE (after reveal) */}
+              {/* CARD STATE */}
               {rarityConfig && phase === "revealed" && (
                 <div className="relative flex flex-col items-center justify-center">
-                  {/* confetti burst */}
                   <div className="confetti-layer">
                     <div className="confetti-piece confetti-1" />
                     <div className="confetti-piece confetti-2" />
@@ -313,11 +316,9 @@ export default function Home() {
                       </p>
                     </div>
 
-                    {/* PLAY button */}
                     <button
                       type="button"
                       onClick={() => {
-                        // replace "/aquarium" with your real aquarium route later
                         window.location.href = "/aquarium";
                       }}
                       className="mt-3 inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm md:text-base font-semibold tracking-wide bg-emerald-300 text-sky-950 shadow-[0_8px_28px_rgba(16,185,129,0.8)] hover:bg-emerald-200 transition-transform duration-150 active:translate-y-[1px]"
@@ -325,7 +326,6 @@ export default function Home() {
                       PLAY
                     </button>
 
-                    {/* Share, Follow, View OpenSea */}
                     <div className="mt-4 w-full flex flex-col gap-2">
                       <a
                         href={warpcastComposeUrl}
