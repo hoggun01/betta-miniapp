@@ -3,30 +3,5 @@
     "header": "eyJmaWQiOjI1MDEzOSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDE3NENFMmM2NDMyODM2MTAxZjhiMTkxNWYwMGNGMDJhMjgyQmIxOEMifQ",
     "payload": "eyJkb21haW4iOiJiZXR0YWhhdGNoZXJ5Lnh5eiJ9",
     "signature": "rDGUlaUX5aPdouDHQdrHn5hPzs2h/iQ4sZJQ/WfZhAtwUkEYiFDFmKfYEuLofuVjyUyO+8UEQRXFgHWh7LNZExs="
-  },
-  "baseBuilder": {
-    "ownerAddress": "0x591cE0cBD9aC7663c7C5ce5e7850129b4d389651"
-  },
-  "miniapp": {
-    "version": "1",
-    "name": "Betta Hatchery",
-    "homeUrl": "https://bettahatchery.xyz",
-    "iconUrl": "https://bettahatchery.xyz/splash.png",
-    "splashImageUrl": "https://bettahatchery.xyz/og.png",
-    "splashBackgroundColor": "#009ACF",
-    "webhookUrl": "https://bettahatchery.xyz/api/webhook",
-    "subtitle": "Hatch your Betta egg",
-    "description": "Hatch a Betta egg using your Farcaster wallet. Each FID can hatch only once.",
-    "screenshotUrls": [
-      "https://bettahatchery.xyz/og.png"
-    ],
-    "primaryCategory": "games",
-    "tags": ["nft", "game", "base"],
-    "heroImageUrl": "https://bettahatchery.xyz/og.png",
-    "tagline": "Hatch, collect, and play.",
-    "ogTitle": "Betta Hatchery",
-    "ogDescription": "Hatch a Betta egg on Base directly from Farcaster.",
-    "ogImageUrl": "https://bettahatchery.xyz/og.png",
-    "noindex": false
   }
 }
