@@ -180,7 +180,18 @@ export default function Home() {
         }),
       });
 
-      const signData = await signRes.json();
+      const signText = await signRes.text();
+      if (!signText) {
+        throw new Error("Empty response from /api/hatch");
+      }
+
+      let signData: any;
+      try {
+        signData = JSON.parse(signText);
+      } catch (parseErr) {
+        console.error("HATCH_PARSE_ERROR", parseErr, signText);
+        throw new Error("Invalid JSON from /api/hatch");
+      }
 
       if (!signRes.ok || !signData.ok) {
         const msg =
@@ -223,14 +234,13 @@ export default function Home() {
       setTxHash(txHashStr);
       setProgress(90);
 
-      // === NEW: read on-chain rarity, but NEVER fail hatch if error ===
+      // === Read on-chain rarity, but NEVER fail hatch if error ===
       let finalRarity: Rarity = "COMMON";
 
       try {
         const resultRes = await fetch(
           `/api/tx-result?hash=${encodeURIComponent(txHashStr)}`
         );
-
         const text = await resultRes.text();
 
         if (text) {
