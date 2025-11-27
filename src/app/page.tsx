@@ -75,15 +75,6 @@ const BETTA_HATCHERY_ABI = [
   },
 ] as const;
 
-function pickRandomRarity(): Rarity {
-  const roll = Math.random() * 100;
-  if (roll < 55) return "COMMON";
-  if (roll < 80) return "UNCOMMON";
-  if (roll < 93) return "RARE";
-  if (roll < 98) return "EPIC";
-  return "LEGENDARY";
-}
-
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<number>(0);
@@ -228,11 +219,30 @@ export default function Home() {
         ],
       });
 
-      setTxHash(String(tx));
-      setProgress(100);
+      const txHashStr = String(tx);
+      setTxHash(txHashStr);
+      setProgress(90);
 
-      const picked = pickRandomRarity();
-      setRarity(picked);
+      // === NEW: fetch on-chain rarity from tx logs ===
+      const resultRes = await fetch(
+        `/api/tx-result?hash=${encodeURIComponent(txHashStr)}`
+      );
+      const resultData = await resultRes.json();
+
+      if (resultRes.ok && resultData.ok && resultData.rarity) {
+        const r = resultData.rarity as Rarity;
+        if (RARITY_CONFIG[r]) {
+          setRarity(r);
+        } else {
+          // fallback kalau server balikin value aneh
+          setRarity("COMMON");
+        }
+      } else {
+        // fallback kalau gagal baca receipt
+        setRarity("COMMON");
+      }
+
+      setProgress(100);
       setPhase("revealed");
     } catch (err: any) {
       console.error(err);
