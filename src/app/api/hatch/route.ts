@@ -1,22 +1,38 @@
-// src/app/api/tx-result/route.ts
+// src/app/api/hatch/route.ts
 import { NextResponse } from "next/server";
 import {
   createPublicClient,
+  createWalletClient,
   http,
-  decodeEventLog,
+  keccak256,
+  encodePacked,
 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
+// === ENV ===
 const RPC_URL = process.env.RPC_URL;
 const BETTA_CONTRACT_ADDRESS = process.env
   .NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}` | undefined;
 
+// signer khusus backend (bisa pakai TRUSTED_SIGNER_PRIVATE_KEY atau PRIVATE_KEY)
+const TRUSTED_SIGNER_PRIVATE_KEY = (process.env
+  .TRUSTED_SIGNER_PRIVATE_KEY ||
+  process.env.PRIVATE_KEY) as `0x${string}` | undefined;
+
 if (!RPC_URL) {
-  console.warn("[TX_RESULT] Missing RPC_URL in env");
+  console.warn("[HATCH] Missing RPC_URL in env");
 }
 if (!BETTA_CONTRACT_ADDRESS) {
-  console.warn("[TX_RESULT] Missing NEXT_PUBLIC_BETTA_CONTRACT in env");
+  console.warn("[HATCH] Missing NEXT_PUBLIC_BETTA_CONTRACT in env");
 }
+if (!TRUSTED_SIGNER_PRIVATE_KEY) {
+  console.warn("[HATCH] Missing TRUSTED_SIGNER_PRIVATE_KEY / PRIVATE_KEY in env");
+}
+
+const account = TRUSTED_SIGNER_PRIVATE_KEY
+  ? privateKeyToAccount(TRUSTED_SIGNER_PRIVATE_KEY)
+  : undefined;
 
 const publicClient = RPC_URL
   ? createPublicClient({
@@ -25,126 +41,130 @@ const publicClient = RPC_URL
     })
   : null;
 
-// ABI event Minted
+const walletClient =
+  RPC_URL && account
+    ? createWalletClient({
+        chain: base,
+        transport: http(RPC_URL),
+        account,
+      })
+    : null;
+
+// Minimal ABI (hanya yang dipakai di sini)
 const BETTA_HATCHERY_ABI = [
   {
-    type: "event",
-    anonymous: false,
-    name: "Minted",
-    inputs: [
-      {
-        indexed: true,
-        internalType: "address",
-        name: "user",
-        type: "address",
-      },
-      {
-        indexed: true,
-        internalType: "uint256",
-        name: "tokenId",
-        type: "uint256",
-      },
-      {
-        indexed: true,
-        internalType: "uint256",
-        name: "fid",
-        type: "uint256",
-      },
-      {
-        indexed: false,
-        // enum BettaHatcheryV2.Rarity ? uint8
-        internalType: "uint8",
-        name: "rarity",
-        type: "uint8",
-      },
-    ],
+    inputs: [],
+    name: "mintPrice",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
   },
 ] as const;
 
-// GET /api/tx-result?hash=0x...
-export async function GET(req: Request) {
+// POST /api/hatch
+export async function POST(req: Request) {
   try {
-    if (!publicClient || !BETTA_CONTRACT_ADDRESS) {
+    if (!publicClient || !walletClient || !account) {
       return NextResponse.json(
         {
           ok: false,
           error: "SERVER_NOT_CONFIGURED",
+          debug: {
+            hasRpcUrl: !!RPC_URL,
+            hasSignerKey: !!TRUSTED_SIGNER_PRIVATE_KEY,
+            hasContractAddress: !!BETTA_CONTRACT_ADDRESS,
+          },
         },
         { status: 500 }
       );
     }
 
-    const { searchParams } = new URL(req.url);
-    const hash = searchParams.get("hash");
-
-    if (!hash || !hash.startsWith("0x")) {
+    if (!BETTA_CONTRACT_ADDRESS) {
       return NextResponse.json(
-        { ok: false, error: "MISSING_OR_INVALID_HASH" },
+        { ok: false, error: "MISSING_CONTRACT_ADDRESS" },
+        { status: 500 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({} as any));
+    const fidRaw = body?.fid;
+    const addressRaw = body?.address as string | undefined;
+
+    if (fidRaw === undefined || fidRaw === null) {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_FID" },
         { status: 400 }
       );
     }
 
-    const receipt = await publicClient.getTransactionReceipt({
-      hash: hash as `0x${string}`,
-    });
-
-    let rarityIndex: number | null = null;
-
-    for (const log of receipt.logs) {
-      if (
-        log.address.toLowerCase() !== BETTA_CONTRACT_ADDRESS.toLowerCase()
-      ) {
-        continue;
-      }
-
-      try {
-        const decoded = decodeEventLog({
-          abi: BETTA_HATCHERY_ABI,
-          data: log.data,
-          topics: log.topics,
-        });
-
-        if (decoded.eventName === "Minted") {
-          const args = decoded.args as any;
-          rarityIndex = Number(args.rarity);
-          break;
-        }
-      } catch (_) {
-        // ignore non-matching logs
-      }
-    }
-
-    if (rarityIndex === null) {
+    if (!addressRaw || typeof addressRaw !== "string") {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "MINT_EVENT_NOT_FOUND",
-        },
-        { status: 200 }
+        { ok: false, error: "MISSING_WALLET_ADDRESS" },
+        { status: 400 }
       );
     }
 
-    const rarityMap = ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY"] as const;
-    const rarity =
-      rarityIndex >= 0 && rarityIndex < rarityMap.length
-        ? rarityMap[rarityIndex]
-        : "COMMON";
+    if (!addressRaw.startsWith("0x") || addressRaw.length !== 42) {
+      return NextResponse.json(
+        { ok: false, error: "INVALID_WALLET_ADDRESS" },
+        { status: 400 }
+      );
+    }
+
+    const fid = BigInt(fidRaw);
+    const userAddress = addressRaw as `0x${string}`;
+
+    // 1) Baca mintPrice dari kontrak
+    const mintPrice = (await publicClient.readContract({
+      address: BETTA_CONTRACT_ADDRESS,
+      abi: BETTA_HATCHERY_ABI,
+      functionName: "mintPrice",
+    })) as bigint;
+
+    // 2) Buat messageHash = keccak256(abi.encodePacked(address(this), user, fid))
+    const messageHash = keccak256(
+      encodePacked(
+        ["address", "address", "uint256"],
+        [BETTA_CONTRACT_ADDRESS, userAddress, fid]
+      )
+    );
+
+    // 3) Sign messageHash dengan trusted signer (EIP-191)
+    const signature = await walletClient.signMessage({
+      account,
+      message: { raw: messageHash },
+    });
 
     return NextResponse.json(
       {
         ok: true,
-        rarity,
+        fid: fid.toString(),
+        mintPrice: mintPrice.toString(),
+        signature,
       },
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("TX_RESULT_ERROR", error);
+    console.error("HATCH_ROUTE_ERROR", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error?.shortMessage || error?.message || "TX_RESULT_ERROR",
+        error: error?.shortMessage || error?.message || "HATCH_ROUTE_ERROR",
       },
       { status: 500 }
     );
   }
+}
+
+// Optional health check
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    message: "Hatch signer route is running",
+    debug: {
+      hasRpcUrl: !!RPC_URL,
+      hasSignerKey: !!TRUSTED_SIGNER_PRIVATE_KEY,
+      hasContractAddress: !!BETTA_CONTRACT_ADDRESS,
+    },
+  });
 }
