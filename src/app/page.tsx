@@ -75,6 +75,30 @@ export default function Home() {
   const isHatching = phase === "hatching";
   const displayProgress = phase === "revealed" ? 100 : Math.round(progress);
 
+  // Farcaster + OpenSea config (change username + fid to yours)
+  const farcasterUsername = "hoggun"; // TODO: change to your Farcaster username
+  const farcasterFid = 250139; // TODO: change to your FID
+  const warpcastProfileUrl = `https://warpcast.com/${farcasterUsername}`;
+  const warpcastProfileDeepLink = `warpcast://profiles/${farcasterFid}`;
+  const shareText = encodeURIComponent(
+    "I just hatched a Betta on Base! 🐟💙\nhttps://bettahatchery.xyz"
+  );
+  const warpcastComposeUrl = `https://warpcast.com/~/compose?text=${shareText}`;
+  const openseaUrl =
+    "https://opensea.io/collection/betta-hatchery-322178410";
+
+  function handleFollowCreator() {
+    if (typeof window !== "undefined") {
+      // Deep link for Warpcast apps
+      window.location.href = warpcastProfileDeepLink;
+
+      // Fallback to web profile if deep link is not handled
+      setTimeout(() => {
+        window.open(warpcastProfileUrl, "_blank");
+      }, 400);
+    }
+  }
+
   async function handleHatch() {
     if (isHatching || phase === "revealed") return;
 
@@ -241,7 +265,7 @@ export default function Home() {
               {/* CARD STATE (after reveal) */}
               {rarityConfig && phase === "revealed" && (
                 <div className="relative flex flex-col items-center justify-center">
-                  {/* confetti birthday burst */}
+                  {/* confetti burst */}
                   <div className="confetti-layer">
                     <div className="confetti-piece confetti-1" />
                     <div className="confetti-piece confetti-2" />
@@ -275,7 +299,7 @@ export default function Home() {
                       </p>
                     </div>
 
-                    {/* PLAY button – only visible after reveal */}
+                    {/* PLAY button */}
                     <button
                       type="button"
                       onClick={() => {
@@ -286,6 +310,35 @@ export default function Home() {
                     >
                       PLAY
                     </button>
+
+                    {/* Share, Follow, View OpenSea */}
+                    <div className="mt-4 w-full flex flex-col gap-2">
+                      <a
+                        href={warpcastComposeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full rounded-xl border border-cyan-300/70 bg-cyan-500/90 px-4 py-2.5 text-center text-xs font-semibold text-slate-950 shadow-md shadow-cyan-500/40 transition hover:translate-y-0.5 hover:bg-cyan-400"
+                      >
+                        Share on Farcaster
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={handleFollowCreator}
+                        className="w-full rounded-xl border border-indigo-300/70 bg-indigo-500/90 px-4 py-2.5 text-center text-xs font-semibold text-slate-50 shadow-md shadow-indigo-500/40 transition hover:translate-y-0.5 hover:bg-indigo-400"
+                      >
+                        Follow Creator
+                      </button>
+
+                      <a
+                        href={openseaUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full rounded-xl border border-amber-300/70 bg-amber-400/90 px-4 py-2.5 text-center text-xs font-semibold text-slate-900 shadow-md shadow-amber-400/40 transition hover:translate-y-0.5 hover:bg-amber-300"
+                      >
+                        View on OpenSea
+                      </a>
+                    </div>
                   </div>
                 </div>
               )}
