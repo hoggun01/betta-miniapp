@@ -4,6 +4,21 @@ import "./globals.css";
 
 const APP_URL = "https://bettahatchery.xyz";
 
+const MINIAPP_EMBED = {
+  version: "1",
+  imageUrl: `${APP_URL}/og.png`,
+  button: {
+    title: "Betta Hatchery",
+    action: {
+      type: "launch_frame", // or "launch_miniapp" depending on docs version
+      name: "Betta Hatchery",
+      url: APP_URL,
+      splashImageUrl: `${APP_URL}/icon.png`,
+      splashBackgroundColor: "#009ACF",
+    },
+  },
+} as const;
+
 export const metadata: Metadata = {
   title: "Betta Hatchery",
   description: "Hatch your Betta Egg using your Farcaster wallet",
@@ -39,7 +54,11 @@ export default function RootLayout({
         {/* Basic meta */}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#020617" />
-        {/* No Farcaster embed meta for now */}
+
+        {/* Farcaster Mini App embed */}
+        <meta name="fc:miniapp" content={JSON.stringify(MINIAPP_EMBED)} />
+        {/* Backward compatibility */}
+        <meta name="fc:frame" content={JSON.stringify(MINIAPP_EMBED)} />
       </head>
       <body className="min-h-screen bg-slate-950 text-slate-50 antialiased">
         {children}
