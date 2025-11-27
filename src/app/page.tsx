@@ -403,6 +403,7 @@ export default function Home() {
 
               {/* button, tx, error */}
               <div className="flex flex-col gap-3">
+                {/* Hatch button */}
                 {phase !== "revealed" && (
                   <button
                     onClick={handleHatch}
@@ -417,6 +418,17 @@ export default function Home() {
                     {isHatching ? "Hatching..." : "Hatch your Betta"}
                   </button>
                 )}
+
+                {/* PLAY button directly under Hatch */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = "/aquarium";
+                  }}
+                  className="inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm md:text-base font-semibold tracking-wide bg-emerald-300 text-sky-950 shadow-[0_8px_28px_rgba(16,185,129,0.8)] hover:bg-emerald-200 transition-transform duration-150 active:translate-y-[1px]"
+                >
+                  PLAY
+                </button>
 
                 {txHash && (
                   <div className="text-[11px] md:text-xs text-sky-100/90">
@@ -475,20 +487,8 @@ export default function Home() {
                           Hatch
                         </span>{" "}
                         to reveal which Betta is hiding inside this underwater
-                        egg. Or jump straight into your aquarium if you already
-                        own a Betta NFT.
+                        egg.
                       </p>
-
-                      {/* PLAY is always available – aquarium will show empty if no NFTs */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.location.href = "/aquarium";
-                        }}
-                        className="mt-2 inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm font-semibold tracking-wide bg-emerald-300 text-sky-950 shadow-[0_8px_28px_rgba(16,185,129,0.8)] hover:bg-emerald-200 transition-transform duration-150 active:translate-y-[1px]"
-                      >
-                        PLAY
-                      </button>
 
                       {hasFish && (
                         <p className="text-[10px] text-emerald-200/80 mt-1 text-center">
