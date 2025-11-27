@@ -223,25 +223,33 @@ export default function Home() {
       setTxHash(txHashStr);
       setProgress(90);
 
-      // === NEW: fetch on-chain rarity from tx logs ===
-      const resultRes = await fetch(
-        `/api/tx-result?hash=${encodeURIComponent(txHashStr)}`
-      );
-      const resultData = await resultRes.json();
+      // === NEW: read on-chain rarity, but NEVER fail hatch if error ===
+      let finalRarity: Rarity = "COMMON";
 
-      if (resultRes.ok && resultData.ok && resultData.rarity) {
-        const r = resultData.rarity as Rarity;
-        if (RARITY_CONFIG[r]) {
-          setRarity(r);
-        } else {
-          // fallback kalau server balikin value aneh
-          setRarity("COMMON");
+      try {
+        const resultRes = await fetch(
+          `/api/tx-result?hash=${encodeURIComponent(txHashStr)}`
+        );
+
+        const text = await resultRes.text();
+
+        if (text) {
+          const resultData = JSON.parse(text);
+
+          if (resultRes.ok && resultData.ok && resultData.rarity) {
+            const r = resultData.rarity as string;
+            const upper = r.toUpperCase() as Rarity;
+            if (upper in RARITY_CONFIG) {
+              finalRarity = upper;
+            }
+          }
         }
-      } else {
-        // fallback kalau gagal baca receipt
-        setRarity("COMMON");
+      } catch (innerErr) {
+        console.error("TX_RESULT_FETCH_ERROR", innerErr);
+        // ignore, fallback to COMMON
       }
 
+      setRarity(finalRarity);
       setProgress(100);
       setPhase("revealed");
     } catch (err: any) {
