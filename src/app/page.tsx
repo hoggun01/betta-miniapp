@@ -125,17 +125,22 @@ export default function Home() {
 
   async function getUserWallet() {
     const provider = await sdk.wallet.getEthereumProvider();
-    const accounts = (await provider.request({
+
+    if (!provider) {
+      throw new Error("Farcaster wallet provider is not available.");
+    }
+
+    const accounts = (await (provider as any).request({
       method: "eth_requestAccounts",
       params: [],
     })) as string[];
 
     if (!accounts || accounts.length === 0) {
-      throw new Error("No wallet accounts found");
+      throw new Error("No wallet accounts found.");
     }
 
     const address = accounts[0] as `0x${string}`;
-    return { provider, address };
+    return { provider: provider as any, address };
   }
 
   async function handleHatch() {
@@ -210,7 +215,7 @@ export default function Home() {
       });
 
       // Send transaction from user's wallet on Base
-      const tx = await provider.request({
+      const tx = await (provider as any).request({
         method: "eth_sendTransaction",
         params: [
           {
