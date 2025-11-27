@@ -219,9 +219,11 @@ export default function Home() {
         method: "eth_sendTransaction",
         params: [
           {
+            from: address,
             to: BETTA_CONTRACT_ADDRESS,
             data,
             value: `0x${mintPriceBigInt.toString(16)}`,
+            chainId: "0x2105", // Base mainnet (8453)
           },
         ],
       });
