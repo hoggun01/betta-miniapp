@@ -22,8 +22,10 @@ type MovingFish = FishToken & {
   phaseSpeed: number;
 };
 
-const BETTA_CONTRACT_ADDRESS = process.env
-  .NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}` | undefined;
+// Fallback ke kontrak betta kamu kalau env tidak di-set / salah
+const BETTA_CONTRACT_ADDRESS =
+  (process.env.NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}` | undefined) ??
+  ("0x48a8443f006729729439f9bc529f905c05380bb7" as `0x${string}`);
 
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
@@ -213,6 +215,8 @@ export default function AquariumPage() {
           args: [address as `0x${string}`],
         })) as bigint;
 
+        console.log("Aquarium balanceOf:", balance.toString());
+
         if (balance === ZERO) {
           setFish([]);
           setIsLoading(false);
@@ -228,25 +232,27 @@ export default function AquariumPage() {
           args: [],
         })) as bigint;
 
-        const ONE = BigInt(1);
+        console.log("Aquarium nextTokenId:", nextTokenIdValue.toString());
 
-        if (nextTokenIdValue <= ONE) {
+        if (nextTokenIdValue === ZERO) {
           setFish([]);
           setIsLoading(false);
           await sdk.actions.ready();
           return;
         }
 
-        const maxTokenId = nextTokenIdValue - ONE;
+        // Di banyak kontrak, tokenId mulai dari 0 dan nextTokenId = totalSupply (0..nextTokenId-1)
+        const maxTokenId = nextTokenIdValue - BigInt(1);
 
-        // For safety, cap how many tokens we scan (e.g. first 500)
+        // Cap scan sampai 500 token pertama
         const HARD_CAP = BigInt(500);
         const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
         const fishes: MovingFish[] = [];
         let index = 0;
 
-        for (let id = ONE; id <= endTokenId; id = id + ONE) {
+        // SCAN tokenId DARI 0 SAMPAI endTokenId (bukan mulai 1 lagi)
+        for (let id = BigInt(0); id <= endTokenId; id = id + BigInt(1)) {
           try {
             const owner = (await client.readContract({
               address: BETTA_CONTRACT_ADDRESS,
