@@ -13,19 +13,12 @@ type FishToken = {
   imageUrl: string;
 };
 
-type TrailPoint = {
-  x: number; // 0-100 (%)
-  y: number; // 0-100 (%)
-  life: number; // 0-1 (used for opacity & scale)
-};
-
 type MovingFish = FishToken & {
   x: number; // 0-100 (horizontal, %)
   y: number; // 0-100 (vertical, %)
   vx: number;
   vy: number;
   facing: "left" | "right";
-  trail: TrailPoint[];
 };
 
 const BETTA_CONTRACT_ADDRESS = process.env
@@ -355,7 +348,6 @@ export default function AquariumPage() {
                 tokenId,
                 rarity,
                 imageUrl: spriteUrl,
-                trail: [],
                 ...motion,
               });
 
@@ -407,7 +399,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement + aura tail trail
+  // Random movement (no trail, just fish motion)
   useEffect(() => {
     let frame: number;
 
@@ -466,28 +458,6 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          // Motion trail (aura tail behind the fish, nyan-cat style)
-          const MAX_TRAIL_POINTS = 28;
-          const DECAY = 0.035;
-          const offsetMultiplier = 26;
-
-          const trailHeadX = x - vx * offsetMultiplier;
-          const trailHeadY = y - vy * offsetMultiplier;
-
-          const clampedTrailHeadX = Math.min(Math.max(trailHeadX, minX), maxX);
-          const clampedTrailHeadY = Math.min(Math.max(trailHeadY, minY), maxY);
-
-          const newTrail: TrailPoint[] = [
-            {
-              x: clampedTrailHeadX,
-              y: clampedTrailHeadY,
-              life: 1,
-            },
-            ...fish.trail
-              .map((p) => ({ ...p, life: p.life - DECAY }))
-              .filter((p) => p.life > 0.05),
-          ].slice(0, MAX_TRAIL_POINTS);
-
           return {
             ...fish,
             x,
@@ -495,7 +465,6 @@ export default function AquariumPage() {
             vx,
             vy,
             facing,
-            trail: newTrail,
           };
         })
       );
@@ -623,40 +592,6 @@ export default function AquariumPage() {
                 </p>
               </div>
             )}
-
-            {/* Aura tail trail behind each fish */}
-            {!isLoading &&
-              !error &&
-              fish.map((f) =>
-                f.trail.map((p, idx) => {
-                  const rarityTrailClass =
-                    f.rarity === "COMMON"
-                      ? "trail-common"
-                      : f.rarity === "UNCOMMON"
-                      ? "trail-uncommon"
-                      : f.rarity === "RARE"
-                      ? "trail-rare"
-                      : f.rarity === "EPIC"
-                      ? "trail-epic"
-                      : "trail-legendary";
-
-                  // Newest point (life = 1) is biggest; older points shrink
-                  const scale = 0.3 + 1.0 * p.life; // 1.3 -> 0.3
-
-                  return (
-                    <div
-                      key={`${f.tokenId.toString()}-trail-${idx}`}
-                      className={`trail-dot ${rarityTrailClass}`}
-                      style={{
-                        left: `${p.x}%`,
-                        top: `${p.y}%`,
-                        opacity: 0.6 * p.life,
-                        transform: `translate(-50%, -50%) scale(${scale})`,
-                      }}
-                    />
-                  );
-                })
-              )}
 
             {/* Main fish sprites */}
             {!isLoading &&
@@ -794,105 +729,43 @@ export default function AquariumPage() {
           transform: none;
         }
 
-        /* Outer line per rarity (outline follows fish shape) */
+        /* Subtle outline glow per rarity (around fish edges) */
         .rarity-common .fish-img {
           filter:
-            drop-shadow(0 0 3px rgba(148, 163, 184, 1))
-            drop-shadow(0 0 8px rgba(148, 163, 184, 0.9));
+            drop-shadow(0 0 2px rgba(148, 163, 184, 0.9))
+            drop-shadow(0 0 6px rgba(148, 163, 184, 0.6));
         }
 
         .rarity-uncommon .fish-img {
           filter:
-            drop-shadow(0 0 4px rgba(52, 211, 153, 1))
-            drop-shadow(0 0 10px rgba(52, 211, 153, 0.95));
+            drop-shadow(0 0 2px rgba(52, 211, 153, 0.95))
+            drop-shadow(0 0 7px rgba(52, 211, 153, 0.7));
         }
 
         .rarity-rare .fish-img {
           filter:
-            drop-shadow(0 0 4px rgba(168, 85, 247, 1))
-            drop-shadow(0 0 12px rgba(168, 85, 247, 0.98));
+            drop-shadow(0 0 2px rgba(168, 85, 247, 0.95))
+            drop-shadow(0 0 8px rgba(168, 85, 247, 0.75));
         }
 
         .rarity-epic .fish-img {
           filter:
-            drop-shadow(0 0 5px rgba(239, 68, 68, 1))
-            drop-shadow(0 0 14px rgba(248, 113, 113, 0.98));
+            drop-shadow(0 0 2px rgba(239, 68, 68, 0.95))
+            drop-shadow(0 0 9px rgba(248, 113, 113, 0.8));
         }
 
         .rarity-legendary .fish-img {
           filter:
-            drop-shadow(0 0 2px rgba(255, 255, 255, 0.95))
-            drop-shadow(0 0 10px rgba(236, 72, 153, 0.95))
-            drop-shadow(0 0 14px rgba(250, 204, 21, 0.95))
-            drop-shadow(0 0 18px rgba(59, 130, 246, 0.95));
+            drop-shadow(0 0 2px rgba(255, 255, 255, 0.9))
+            drop-shadow(0 0 8px rgba(236, 72, 153, 0.85))
+            drop-shadow(0 0 10px rgba(250, 204, 21, 0.85))
+            drop-shadow(0 0 12px rgba(59, 130, 246, 0.85));
         }
 
         .feed-mode .fish-img {
           filter:
-            drop-shadow(0 0 4px rgba(250, 250, 250, 0.95))
-            drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
-        }
-
-        /* Aura tail dots (nyan-cat style) */
-        .trail-dot {
-          position: absolute;
-          width: 4.8rem;
-          height: 4.8rem;
-          border-radius: 9999px;
-          pointer-events: none;
-          z-index: 2;
-          filter: blur(12px);
-        }
-
-        .trail-common {
-          background: radial-gradient(
-            circle,
-            rgba(148, 163, 184, 0.85) 0%,
-            rgba(148, 163, 184, 0) 70%
-          );
-        }
-
-        .trail-uncommon {
-          background: radial-gradient(
-            circle,
-            rgba(52, 211, 153, 0.9) 0%,
-            rgba(52, 211, 153, 0) 72%
-          );
-        }
-
-        .trail-rare {
-          background: radial-gradient(
-            circle,
-            rgba(168, 85, 247, 0.92) 0%,
-            rgba(168, 85, 247, 0) 74%
-          );
-        }
-
-        .trail-epic {
-          background: radial-gradient(
-            circle,
-            rgba(239, 68, 68, 0.95) 0%,
-            rgba(239, 68, 68, 0) 74%
-          );
-        }
-
-        .trail-legendary {
-          background: conic-gradient(
-              from 0deg,
-              rgba(236, 72, 153, 0.95),
-              rgba(249, 115, 22, 0.95),
-              rgba(250, 204, 21, 0.95),
-              rgba(34, 197, 94, 0.95),
-              rgba(59, 130, 246, 0.95),
-              rgba(168, 85, 247, 0.95),
-              rgba(236, 72, 153, 0.95)
-            );
-          mask-image: radial-gradient(circle, white 0%, transparent 70%);
-          -webkit-mask-image: radial-gradient(circle, white 0%, transparent 70%);
-        }
-
-        .feed-mode .trail-dot {
-          filter: blur(14px);
+            drop-shadow(0 0 3px rgba(250, 250, 250, 0.95))
+            drop-shadow(0 0 10px rgba(250, 204, 21, 0.95));
         }
 
         .pellet {
