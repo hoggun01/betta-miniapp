@@ -383,8 +383,8 @@ export default function AquariumPage() {
                   key={f.tokenId.toString()}
                   className="absolute"
                   style={{
-                    top: f.top + "%",
-                    left: f.left + "%",
+                    top: f.top + "%",      // posisi dasar random
+                    left: f.left + "%",    // posisi dasar random
                     animationDuration: f.duration + "s",
                     animationDelay: f.delay + "s",
                   }}
@@ -392,7 +392,7 @@ export default function AquariumPage() {
                   <img
                     src={f.imageUrl}
                     alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                    className="swim w-24 h-24 object-contain drop-shadow-[0_0_18px_rgba(56,189,248,0.8)]"
+                    className="swim w-24 h-24 object-contain drop-shadow-[0_0_22px_rgba(56,189,248,0.9)]"
                     draggable={false}
                   />
                 </div>
@@ -444,15 +444,25 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
+        /* path renang lebih besar: kanan, kiri, atas, bawah + sedikit rotasi */
         @keyframes swim {
           0% {
-            transform: translate3d(0, 0, 0) scale(1);
+            transform: translate3d(-40px, 0px, 0) scale(0.96) rotate(2deg);
           }
-          50% {
-            transform: translate3d(12px, -6px, 0) scale(1.03);
+          20% {
+            transform: translate3d(10px, -22px, 0) scale(1.02) rotate(-4deg);
+          }
+          40% {
+            transform: translate3d(48px, -8px, 0) scale(1.05) rotate(3deg);
+          }
+          60% {
+            transform: translate3d(32px, 24px, 0) scale(1.03) rotate(-3deg);
+          }
+          80% {
+            transform: translate3d(-18px, 32px, 0) scale(1.0) rotate(1deg);
           }
           100% {
-            transform: translate3d(-8px, 10px, 0) scale(1);
+            transform: translate3d(-40px, 0px, 0) scale(0.96) rotate(0deg);
           }
         }
 
