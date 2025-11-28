@@ -26,13 +26,28 @@ const BETTA_CONTRACT_ADDRESS = process.env
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
 
+// Minimal ABI: nextTokenId, balanceOf, ownerOf, tokenURI
 const BETTA_ABI = [
   {
     type: "function",
-    name: "tokensOfOwner",
+    name: "nextTokenId",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
     stateMutability: "view",
     inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ name: "tokenIds", type: "uint256[]" }],
+    outputs: [{ name: "balance", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "ownerOf",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "owner", type: "address" }],
   },
   {
     type: "function",
@@ -43,6 +58,7 @@ const BETTA_ABI = [
   },
 ] as const;
 
+// Map rarity to local sprite in /public
 const RARITY_SPRITES: Record<Rarity, string> = {
   COMMON: "/common.png",
   UNCOMMON: "/uncommon.png",
@@ -54,7 +70,7 @@ const RARITY_SPRITES: Record<Rarity, string> = {
 function ipfsToHttp(uri: string): string {
   if (!uri) return uri;
   if (uri.startsWith("ipfs://")) {
-    return `https://ipfs.io/ipfs/${uri.replace("ipfs://", "")}`;
+    return "https://ipfs.io/ipfs/" + uri.replace("ipfs://", "");
   }
   return uri;
 }
@@ -144,14 +160,14 @@ export default function AquariumPage() {
           params: [],
         })) as string[];
 
-        let address = accounts?.[0];
+        let address = accounts && accounts[0];
 
         if (!address) {
           const requested = (await (provider as any).request({
             method: "eth_requestAccounts",
             params: [],
           })) as string[];
-          address = requested?.[0];
+          address = requested && requested[0];
         }
 
         if (!address) {
@@ -168,40 +184,66 @@ export default function AquariumPage() {
           transport: http(RPC_URL),
         });
 
-        let tokenIds: bigint[] = [];
-        try {
-          tokenIds = (await client.readContract({
-            address: BETTA_CONTRACT_ADDRESS,
-            abi: BETTA_ABI,
-            functionName: "tokensOfOwner",
-            args: [address as `0x${string}`],
-          })) as bigint[];
-        } catch (readError) {
-          console.error("Error reading tokensOfOwner:", readError);
-          setError(
-            "Unable to read tokens from contract. Check ABI or function name (tokensOfOwner)."
-          );
-          setIsLoading(false);
-          await sdk.actions.ready();
-          return;
-        }
+        const ZERO = BigInt(0);
 
-        if (!tokenIds.length) {
+        // Quick check: if balanceOf == 0 -> aquarium empty
+        const balance = (await client.readContract({
+          address: BETTA_CONTRACT_ADDRESS,
+          abi: BETTA_ABI,
+          functionName: "balanceOf",
+          args: [address as `0x${string}`],
+        })) as bigint;
+
+        if (balance === ZERO) {
           setFish([]);
           setIsLoading(false);
           await sdk.actions.ready();
           return;
         }
 
+        // Get total minted via nextTokenId (public)
+        const nextTokenIdValue = (await client.readContract({
+          address: BETTA_CONTRACT_ADDRESS,
+          abi: BETTA_ABI,
+          functionName: "nextTokenId",
+          args: [],
+        })) as bigint;
+
+        const ONE = BigInt(1);
+
+        if (nextTokenIdValue <= ONE) {
+          setFish([]);
+          setIsLoading(false);
+          await sdk.actions.ready();
+          return;
+        }
+
+        const maxTokenId = nextTokenIdValue - ONE;
+
+        // For safety, cap how many tokens we scan (e.g. first 500)
+        const HARD_CAP = BigInt(500);
+        const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
+
         const fishes: PositionedFish[] = [];
 
-        for (const tokenId of tokenIds) {
+        for (let id = ONE; id <= endTokenId; id = id + ONE) {
           try {
+            const owner = (await client.readContract({
+              address: BETTA_CONTRACT_ADDRESS,
+              abi: BETTA_ABI,
+              functionName: "ownerOf",
+              args: [id],
+            })) as string;
+
+            if (owner.toLowerCase() !== address.toLowerCase()) {
+              continue;
+            }
+
             const rawUri = (await client.readContract({
               address: BETTA_CONTRACT_ADDRESS,
               abi: BETTA_ABI,
               functionName: "tokenURI",
-              args: [tokenId],
+              args: [id],
             })) as string;
 
             const metadataUrl = ipfsToHttp(rawUri);
@@ -213,13 +255,13 @@ export default function AquariumPage() {
             const motion = createRandomMotion();
 
             fishes.push({
-              tokenId,
+              tokenId: id,
               rarity,
               imageUrl: spriteUrl,
               ...motion,
             });
-          } catch (metaError) {
-            console.error("Error loading metadata for token", tokenId, metaError);
+          } catch (perTokenError) {
+            console.error("Error loading token", id.toString(), perTokenError);
           }
         }
 
