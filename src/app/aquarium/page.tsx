@@ -109,12 +109,12 @@ function createInitialMotion(index: number): {
   vy: number;
   facing: "left" | "right";
 } {
-  // Posisi awal tersebar di dalam tank
+  // Initial position spread inside the tank
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
-  // Kecepatan random kecil biar smooth
-  const base = 0.10 + Math.random() * 0.05;
+  // Small random velocity for smooth movement
+  const base = 0.1 + Math.random() * 0.05;
   const vx = (Math.random() > 0.5 ? 1 : -1) * base;
   const vy = (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.04);
 
@@ -302,7 +302,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement seperti script demo (requestAnimationFrame)
+  // Random movement (requestAnimationFrame)
   useEffect(() => {
     let frame: number;
 
@@ -314,7 +314,7 @@ export default function AquariumPage() {
           x += vx;
           y += vy;
 
-          // Batas area tank (dalam % dari container)
+          // Tank bounds (percent from container)
           const minX = 10;
           const maxX = 90;
           const minY = 18;
@@ -512,20 +512,15 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
-        /* wrapper untuk ikan (glow + arah) */
+        /* Transparent wrapper just for flipping direction */
         .fish-wrapper {
-          width: 5.5rem;
-          height: 5.5rem;
-          border-radius: 9999px;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: radial-gradient(
-            circle at 30% 20%,
-            rgba(250, 250, 220, 0.2),
-            transparent 60%
-          );
-          box-shadow: 0 0 26px rgba(56, 189, 248, 0.85);
+          width: auto;
+          height: auto;
+          background: transparent;
+          box-shadow: none;
         }
 
         .fish-facing-right {
@@ -536,7 +531,7 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* Sirip / badan berdenyut pelan biar keliatan hidup */
+        /* Fin / body wiggle so fish looks alive */
         @keyframes finWiggle {
           0% {
             transform: scale(1) translate3d(0, 0, 0) rotate(0deg);
