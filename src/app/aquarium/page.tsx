@@ -13,12 +13,19 @@ type FishToken = {
   imageUrl: string;
 };
 
+type TrailPoint = {
+  x: number; // 0-100 (%)
+  y: number; // 0-100 (%)
+  life: number; // 0-1, used as opacity
+};
+
 type MovingFish = FishToken & {
   x: number; // 0-100 (horizontal, %)
   y: number; // 0-100 (vertical, %)
   vx: number;
   vy: number;
   facing: "left" | "right";
+  trail: TrailPoint[];
 };
 
 const BETTA_CONTRACT_ADDRESS = process.env
@@ -271,6 +278,7 @@ export default function AquariumPage() {
               tokenId: id,
               rarity,
               imageUrl: spriteUrl,
+              trail: [],
               ...motion,
             });
 
@@ -308,6 +316,7 @@ export default function AquariumPage() {
   }, []);
 
   // Random movement using requestAnimationFrame, with slight wander
+  // plus aura trail based on previous positions
   useEffect(() => {
     let frame: number;
 
@@ -366,7 +375,26 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          return { ...fish, x, y, vx, vy, facing };
+          // build aura trail from previous positions
+          const MAX_TRAIL_POINTS = 6;
+          const DECAY = 0.16;
+
+          const newTrail: TrailPoint[] = [
+            { x: fish.x, y: fish.y, life: 1 },
+            ...fish.trail
+              .map((p) => ({ ...p, life: p.life - DECAY }))
+              .filter((p) => p.life > 0.05),
+          ].slice(0, MAX_TRAIL_POINTS);
+
+          return {
+            ...fish,
+            x,
+            y,
+            vx,
+            vy,
+            facing,
+            trail: newTrail,
+          };
         })
       );
 
@@ -514,6 +542,17 @@ export default function AquariumPage() {
                     ? "rarity-epic"
                     : "rarity-legendary";
 
+                const trailClass =
+                  f.rarity === "COMMON"
+                    ? "trail-common"
+                    : f.rarity === "UNCOMMON"
+                    ? "trail-uncommon"
+                    : f.rarity === "RARE"
+                    ? "trail-rare"
+                    : f.rarity === "EPIC"
+                    ? "trail-epic"
+                    : "trail-legendary";
+
                 return (
                   <div
                     key={f.tokenId.toString()}
@@ -525,6 +564,21 @@ export default function AquariumPage() {
                       zIndex: 2,
                     }}
                   >
+                    {/* Aura trail based on previous positions */}
+                    {f.trail.map((p, idx) => (
+                      <div
+                        key={idx}
+                        className={`absolute pointer-events-none trail-dot ${trailClass}`}
+                        style={{
+                          left: `${p.x}%`,
+                          top: `${p.y}%`,
+                          transform: "translate(-50%, -50%)",
+                          opacity: 0.5 * p.life,
+                          zIndex: 1,
+                        }}
+                      />
+                    ))}
+
                     <div
                       className={
                         "fish-wrapper " +
@@ -614,7 +668,7 @@ export default function AquariumPage() {
           backdrop-filter: blur(1px);
         }
 
-        /* Transparent wrapper: only flips direction + aura trail */
+        /* Transparent wrapper: only flips direction + aura glow */
         .fish-wrapper {
           position: relative;
           display: flex;
@@ -626,7 +680,7 @@ export default function AquariumPage() {
           box-shadow: none;
         }
 
-        /* BASE AURA SHAPE */
+        /* BASE AURA SHAPE (around the fish body) */
         .fish-wrapper::before {
           content: "";
           position: absolute;
@@ -645,7 +699,7 @@ export default function AquariumPage() {
           );
         }
 
-        /* COMMON – grey, paling halus */
+        /* COMMON – grey, softest aura */
         .rarity-common.fish-wrapper::before {
           background: radial-gradient(
             circle,
@@ -656,7 +710,7 @@ export default function AquariumPage() {
           filter: blur(16px);
         }
 
-        /* UNCOMMON – hijau */
+        /* UNCOMMON – green */
         .rarity-uncommon.fish-wrapper::before {
           background: radial-gradient(
             circle,
@@ -667,7 +721,7 @@ export default function AquariumPage() {
           filter: blur(18px);
         }
 
-        /* RARE – ungu */
+        /* RARE – purple */
         .rarity-rare.fish-wrapper::before {
           background: radial-gradient(
             circle,
@@ -678,7 +732,7 @@ export default function AquariumPage() {
           filter: blur(19px);
         }
 
-        /* EPIC – merah lebih kuat */
+        /* EPIC – stronger red aura */
         .rarity-epic.fish-wrapper::before {
           background: radial-gradient(
             circle,
@@ -689,7 +743,7 @@ export default function AquariumPage() {
           filter: blur(20px);
         }
 
-        /* LEGENDARY – pelangi (rainbow) paling jelas */
+        /* LEGENDARY – rainbow, most visible aura */
         .rarity-legendary.fish-wrapper::before {
           width: 5.4rem;
           height: 5.4rem;
@@ -707,7 +761,7 @@ export default function AquariumPage() {
           filter: blur(22px);
         }
 
-        /* saat feed, semua aura sedikit lebih terang */
+        /* During feed mode, all auras slightly brighter */
         .feed-mode .fish-wrapper::before {
           opacity: 0.6;
         }
@@ -744,6 +798,65 @@ export default function AquariumPage() {
 
         .feed-mode .fish-img {
           filter: drop-shadow(0 0 24px rgba(250, 204, 21, 0.95));
+        }
+
+        /* TRAIL DOTS — aura trail behind moving fish */
+        .trail-dot {
+          width: 4.8rem;
+          height: 4.8rem;
+          border-radius: 9999px;
+          filter: blur(18px);
+          pointer-events: none;
+          transition: opacity 0.15s linear;
+        }
+
+        .trail-common {
+          background: radial-gradient(
+            circle,
+            rgba(148, 163, 184, 0.45) 0%,
+            rgba(15, 23, 42, 0) 70%
+          );
+        }
+
+        .trail-uncommon {
+          background: radial-gradient(
+            circle,
+            rgba(52, 211, 153, 0.55) 0%,
+            rgba(15, 23, 42, 0) 70%
+          );
+        }
+
+        .trail-rare {
+          background: radial-gradient(
+            circle,
+            rgba(168, 85, 247, 0.6) 0%,
+            rgba(15, 23, 42, 0) 72%
+          );
+        }
+
+        .trail-epic {
+          background: radial-gradient(
+            circle,
+            rgba(239, 68, 68, 0.65) 0%,
+            rgba(15, 23, 42, 0) 72%
+          );
+        }
+
+        .trail-legendary {
+          background: conic-gradient(
+            from 0deg,
+            rgba(236, 72, 153, 0.7),
+            rgba(249, 115, 22, 0.7),
+            rgba(250, 204, 21, 0.7),
+            rgba(34, 197, 94, 0.7),
+            rgba(59, 130, 246, 0.7),
+            rgba(168, 85, 247, 0.7),
+            rgba(236, 72, 153, 0.7)
+          );
+        }
+
+        .feed-mode .trail-dot {
+          filter: blur(20px);
         }
 
         .pellet {
