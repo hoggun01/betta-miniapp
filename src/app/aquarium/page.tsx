@@ -16,7 +16,7 @@ type FishToken = {
 type TrailPoint = {
   x: number; // 0-100 (%)
   y: number; // 0-100 (%)
-  life: number; // 0-1, controls opacity
+  life: number; // 0-1 (dipakai untuk opacity)
   facing: "left" | "right";
 };
 
@@ -218,6 +218,7 @@ export default function AquariumPage() {
           return;
         }
 
+        // untuk stop scanning ketika semua ikan user sudah ketemu
         const balanceNum = Number(balance);
 
         const nextTokenIdValue = (await client.readContract({
@@ -284,6 +285,7 @@ export default function AquariumPage() {
 
             found += 1;
             if (found >= balanceNum) {
+              // semua ikan user sudah ketemu → stop scan
               break;
             }
           } catch (perTokenError) {
@@ -314,7 +316,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement with ghost trail
+  // Random movement + ghost motion trail
   useEffect(() => {
     let frame: number;
 
@@ -323,6 +325,7 @@ export default function AquariumPage() {
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
+          // wander kecil
           const wanderStrengthX = 0.01;
           const wanderStrengthY = 0.008;
 
@@ -372,11 +375,28 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          const MAX_TRAIL_POINTS = 8;
-          const DECAY = 0.18;
+          // ---- MOTION TRAIL SETUP ----
+          const MAX_TRAIL_POINTS = 10;
+          const DECAY = 0.08;
+
+          // semakin besar offsetMultiplier → jejak makin jauh dari ikan
+          const offsetMultiplier = 32;
+
+          // posisi "jejak baru" = beberapa langkah DI BELAKANG arah gerak
+          const trailHeadX = x - vx * offsetMultiplier;
+          const trailHeadY = y - vy * offsetMultiplier;
+
+          // clamp supaya trail tidak keluar area aquarium
+          const clampedTrailHeadX = Math.min(Math.max(trailHeadX, minX), maxX);
+          const clampedTrailHeadY = Math.min(Math.max(trailHeadY, minY), maxY);
 
           const newTrail: TrailPoint[] = [
-            { x: fish.x, y: fish.y, life: 1, facing: fish.facing },
+            {
+              x: clampedTrailHeadX,
+              y: clampedTrailHeadY,
+              life: 1,
+              facing,
+            },
             ...fish.trail
               .map((p) => ({ ...p, life: p.life - DECAY }))
               .filter((p) => p.life > 0.05),
@@ -518,7 +538,7 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* MOTION TRAIL: ghost fish following the path */}
+            {/* MOTION TRAIL: beberapa ikan hantu jauh di belakang */}
             {!isLoading &&
               !error &&
               fish.map((f) =>
@@ -546,7 +566,7 @@ export default function AquariumPage() {
                       style={{
                         left: `${p.x}%`,
                         top: `${p.y}%`,
-                        opacity: 0.55 * p.life,
+                        opacity: 0.6 * p.life,
                       }}
                       alt=""
                       draggable={false}
@@ -555,7 +575,7 @@ export default function AquariumPage() {
                 })
               )}
 
-            {/* Main fish with thick outline per rarity */}
+            {/* FISH UTAMA */}
             {!isLoading &&
               !error &&
               fish.map((f) => {
@@ -691,7 +711,7 @@ export default function AquariumPage() {
           transform: none;
         }
 
-        /* Outer line following fish shape (rarity colors) */
+        /* OUTER LINE SESUAI RARITY (ngikut bentuk ikan) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 3px rgba(148, 163, 184, 1))
@@ -730,17 +750,15 @@ export default function AquariumPage() {
             drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
         }
 
-        /* Ghost motion trail (uses same fish PNG) */
+        /* GHOST MOTION TRAIL: ikan hantu */
         .fish-trail-img {
           position: absolute;
-          width: 4.2rem;
-          height: 4.2rem;
+          width: 4.0rem;
+          height: 4.0rem;
           object-fit: contain;
           transform: translate(-50%, -50%);
           pointer-events: none;
           z-index: 2;
-          filter: blur(4px);
-          mix-blend-mode: screen;
         }
 
         .fish-trail-facing-right {
@@ -751,35 +769,42 @@ export default function AquariumPage() {
           transform: translate(-50%, -50%) scaleX(-1);
         }
 
+        /* warna trail per rarity */
         .trail-common {
-          filter: blur(5px)
-            drop-shadow(0 0 10px rgba(148, 163, 184, 0.8));
+          filter:
+            blur(2px)
+            drop-shadow(0 0 8px rgba(148, 163, 184, 0.9));
         }
 
         .trail-uncommon {
-          filter: blur(5px)
-            drop-shadow(0 0 12px rgba(52, 211, 153, 0.9));
+          filter:
+            blur(2px)
+            drop-shadow(0 0 9px rgba(52, 211, 153, 0.95));
         }
 
         .trail-rare {
-          filter: blur(6px)
-            drop-shadow(0 0 13px rgba(168, 85, 247, 0.95));
+          filter:
+            blur(3px)
+            drop-shadow(0 0 10px rgba(168, 85, 247, 0.98));
         }
 
         .trail-epic {
-          filter: blur(6px)
-            drop-shadow(0 0 14px rgba(239, 68, 68, 0.95));
+          filter:
+            blur(3px)
+            drop-shadow(0 0 11px rgba(239, 68, 68, 0.98));
         }
 
         .trail-legendary {
-          filter: blur(7px)
-            drop-shadow(0 0 16px rgba(236, 72, 153, 0.95))
-            drop-shadow(0 0 18px rgba(250, 204, 21, 0.95));
+          filter:
+            blur(3px)
+            drop-shadow(0 0 12px rgba(236, 72, 153, 0.98))
+            drop-shadow(0 0 14px rgba(250, 204, 21, 0.98));
         }
 
         .feed-mode .fish-trail-img {
-          filter: blur(7px)
-            drop-shadow(0 0 18px rgba(250, 204, 21, 0.98));
+          filter:
+            blur(4px)
+            drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
         }
 
         .pellet {
@@ -969,7 +994,7 @@ function Badge({ label, value }: BadgeProps) {
   } else if (lower === "rare") {
     dotColorClass = "bg-sky-400";
   } else if (lower === "epic") {
-    dotColorClass = "bg-amber-400";
+    dotColorClass = "bg-amber-400"; // lebih ke orange/gold
   } else if (lower === "legendary") {
     dotColorClass = "bg-red-500";
   }
