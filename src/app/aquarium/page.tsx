@@ -217,7 +217,6 @@ export default function AquariumPage() {
           return;
         }
 
-        // User has some fish; convert to number for stopping condition
         const balanceNum = Number(balance);
 
         const nextTokenIdValue = (await client.readContract({
@@ -284,7 +283,6 @@ export default function AquariumPage() {
 
             found += 1;
             if (found >= balanceNum) {
-              // All of this user's fish have been found; no need to scan further
               break;
             }
           } catch (perTokenError) {
@@ -315,8 +313,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement using requestAnimationFrame, with slight wander
-  // plus aura trail based on previous positions
+  // Random movement using requestAnimationFrame with aura trail
   useEffect(() => {
     let frame: number;
 
@@ -325,7 +322,6 @@ export default function AquariumPage() {
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
-          // add small random wander to velocity
           const wanderStrengthX = 0.01;
           const wanderStrengthY = 0.008;
 
@@ -375,7 +371,6 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          // build aura trail from previous positions
           const MAX_TRAIL_POINTS = 6;
           const DECAY = 0.16;
 
@@ -431,12 +426,10 @@ export default function AquariumPage() {
   };
 
   const handleMyFishClick = () => {
-    // TODO: open My Fish panel
     console.log("MY FISH clicked");
   };
 
   const handleBattleClick = () => {
-    // TODO: open Battle view
     console.log("BATTLE clicked");
   };
 
@@ -468,7 +461,6 @@ export default function AquariumPage() {
           </p>
         </header>
 
-        {/* Tank with custom background image */}
         <section
           className={
             "relative w-full max-w-md aspect-[3/5] mx-auto rounded-3xl overflow-hidden neon-frame" +
@@ -481,7 +473,6 @@ export default function AquariumPage() {
           }}
         >
           <div className="relative w-full h-full">
-            {/* Shadow fish layer (behind bubbles & main fish) */}
             <div className="shadow-layer">
               <img
                 src="/shadowfish.png"
@@ -491,7 +482,6 @@ export default function AquariumPage() {
               />
             </div>
 
-            {/* Bubble layer */}
             <div className="bubble-layer">
               <div className="bubble bubble-1" />
               <div className="bubble bubble-2" />
@@ -527,7 +517,39 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* Fishes */}
+            {/* Trails: global positions, soft colored shadows */}
+            {!isLoading &&
+              !error &&
+              fish.map((f) =>
+                f.trail.map((p, idx) => {
+                  const trailClass =
+                    f.rarity === "COMMON"
+                      ? "trail-common"
+                      : f.rarity === "UNCOMMON"
+                      ? "trail-uncommon"
+                      : f.rarity === "RARE"
+                      ? "trail-rare"
+                      : f.rarity === "EPIC"
+                      ? "trail-epic"
+                      : "trail-legendary";
+
+                  return (
+                    <div
+                      key={`${f.tokenId.toString()}-trail-${idx}`}
+                      className={`absolute pointer-events-none trail-dot ${trailClass}`}
+                      style={{
+                        left: `${p.x}%`,
+                        top: `${p.y}%`,
+                        transform: "translate(-50%, -50%)",
+                        opacity: 0.5 * p.life,
+                        zIndex: 1,
+                      }}
+                    />
+                  );
+                })
+              )}
+
+            {/* Fish icons with thick outline per rarity */}
             {!isLoading &&
               !error &&
               fish.map((f) => {
@@ -542,17 +564,6 @@ export default function AquariumPage() {
                     ? "rarity-epic"
                     : "rarity-legendary";
 
-                const trailClass =
-                  f.rarity === "COMMON"
-                    ? "trail-common"
-                    : f.rarity === "UNCOMMON"
-                    ? "trail-uncommon"
-                    : f.rarity === "RARE"
-                    ? "trail-rare"
-                    : f.rarity === "EPIC"
-                    ? "trail-epic"
-                    : "trail-legendary";
-
                 return (
                   <div
                     key={f.tokenId.toString()}
@@ -564,21 +575,6 @@ export default function AquariumPage() {
                       zIndex: 2,
                     }}
                   >
-                    {/* Aura trail based on previous positions */}
-                    {f.trail.map((p, idx) => (
-                      <div
-                        key={idx}
-                        className={`absolute pointer-events-none trail-dot ${trailClass}`}
-                        style={{
-                          left: `${p.x}%`,
-                          top: `${p.y}%`,
-                          transform: "translate(-50%, -50%)",
-                          opacity: 0.5 * p.life,
-                          zIndex: 1,
-                        }}
-                      />
-                    ))}
-
                     <div
                       className={
                         "fish-wrapper " +
@@ -628,7 +624,6 @@ export default function AquariumPage() {
           </div>
         </section>
 
-        {/* Bottom action buttons: FEED - MY FISH - BATTLE */}
         <div className="flex items-center justify-center mt-4 gap-4">
           <button
             type="button"
@@ -658,7 +653,6 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
-        /* NEON OUTLINE FRAME AROUND AQUARIUM */
         .neon-frame {
           border: 3px solid rgba(56, 189, 248, 0.85);
           box-shadow:
@@ -668,114 +662,11 @@ export default function AquariumPage() {
           backdrop-filter: blur(1px);
         }
 
-        /* Transparent wrapper: only flips direction + aura glow */
         .fish-wrapper {
           position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          width: auto;
-          height: auto;
-          background: transparent;
-          box-shadow: none;
-        }
-
-        /* BASE AURA SHAPE (around the fish body) */
-        .fish-wrapper::before {
-          content: "";
-          position: absolute;
-          width: 5.1rem;
-          height: 5.1rem;
-          border-radius: 9999px;
-          opacity: 0.22;
-          filter: blur(18px);
-          pointer-events: none;
-          z-index: -1;
-          animation: auraDrift 2.4s ease-in-out infinite;
-          background: radial-gradient(
-            circle,
-            rgba(148, 163, 184, 0.6) 0%,
-            rgba(15, 23, 42, 0) 65%
-          );
-        }
-
-        /* COMMON – grey, softest aura */
-        .rarity-common.fish-wrapper::before {
-          background: radial-gradient(
-            circle,
-            rgba(148, 163, 184, 0.6) 0%,
-            rgba(15, 23, 42, 0) 65%
-          );
-          opacity: 0.18;
-          filter: blur(16px);
-        }
-
-        /* UNCOMMON – green */
-        .rarity-uncommon.fish-wrapper::before {
-          background: radial-gradient(
-            circle,
-            rgba(52, 211, 153, 0.7) 0%,
-            rgba(15, 23, 42, 0) 65%
-          );
-          opacity: 0.26;
-          filter: blur(18px);
-        }
-
-        /* RARE – purple */
-        .rarity-rare.fish-wrapper::before {
-          background: radial-gradient(
-            circle,
-            rgba(168, 85, 247, 0.75) 0%,
-            rgba(15, 23, 42, 0) 68%
-          );
-          opacity: 0.32;
-          filter: blur(19px);
-        }
-
-        /* EPIC – stronger red aura */
-        .rarity-epic.fish-wrapper::before {
-          background: radial-gradient(
-            circle,
-            rgba(239, 68, 68, 0.8) 0%,
-            rgba(251, 113, 133, 0) 70%
-          );
-          opacity: 0.38;
-          filter: blur(20px);
-        }
-
-        /* LEGENDARY – rainbow, most visible aura */
-        .rarity-legendary.fish-wrapper::before {
-          width: 5.4rem;
-          height: 5.4rem;
-          background: conic-gradient(
-            from 0deg,
-            rgba(236, 72, 153, 0.9),
-            rgba(249, 115, 22, 0.9),
-            rgba(250, 204, 21, 0.9),
-            rgba(34, 197, 94, 0.9),
-            rgba(59, 130, 246, 0.9),
-            rgba(168, 85, 247, 0.9),
-            rgba(236, 72, 153, 0.9)
-          );
-          opacity: 0.45;
-          filter: blur(22px);
-        }
-
-        /* During feed mode, all auras slightly brighter */
-        .feed-mode .fish-wrapper::before {
-          opacity: 0.6;
-        }
-
-        @keyframes auraDrift {
-          0% {
-            opacity: 0.95;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            opacity: 0.95;
-          }
         }
 
         .fish-facing-right {
@@ -786,24 +677,58 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* static size & glow; movement comes ONLY from JS (x,y) */
         .fish-img {
           width: 4.5rem;
           height: 4.5rem;
           object-fit: contain;
           image-rendering: auto;
-          filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
+          filter: none;
           transform: none;
         }
 
-        .feed-mode .fish-img {
-          filter: drop-shadow(0 0 24px rgba(250, 204, 21, 0.95));
+        /* OUTLINE PER RARITY (outer line following fish shape) */
+        .rarity-common .fish-img {
+          filter:
+            drop-shadow(0 0 3px rgba(148, 163, 184, 1))
+            drop-shadow(0 0 8px rgba(148, 163, 184, 0.9));
         }
 
-        /* TRAIL DOTS — aura trail behind moving fish */
+        .rarity-uncommon .fish-img {
+          filter:
+            drop-shadow(0 0 4px rgba(52, 211, 153, 1))
+            drop-shadow(0 0 10px rgba(52, 211, 153, 0.95));
+        }
+
+        .rarity-rare .fish-img {
+          filter:
+            drop-shadow(0 0 4px rgba(168, 85, 247, 1))
+            drop-shadow(0 0 12px rgba(168, 85, 247, 0.98));
+        }
+
+        .rarity-epic .fish-img {
+          filter:
+            drop-shadow(0 0 5px rgba(239, 68, 68, 1))
+            drop-shadow(0 0 14px rgba(248, 113, 113, 0.98));
+        }
+
+        .rarity-legendary .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(255, 255, 255, 0.95))
+            drop-shadow(0 0 10px rgba(236, 72, 153, 0.95))
+            drop-shadow(0 0 14px rgba(250, 204, 21, 0.95))
+            drop-shadow(0 0 18px rgba(59, 130, 246, 0.95));
+        }
+
+        .feed-mode .fish-img {
+          filter:
+            drop-shadow(0 0 4px rgba(250, 250, 250, 0.95))
+            drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
+        }
+
+        /* TRAIL DOTS — colored aura left behind the fish */
         .trail-dot {
-          width: 4.8rem;
-          height: 4.8rem;
+          width: 4.4rem;
+          height: 4.4rem;
           border-radius: 9999px;
           filter: blur(18px);
           pointer-events: none;
@@ -813,50 +738,57 @@ export default function AquariumPage() {
         .trail-common {
           background: radial-gradient(
             circle,
-            rgba(148, 163, 184, 0.45) 0%,
-            rgba(15, 23, 42, 0) 70%
+            rgba(148, 163, 184, 0.6) 0%,
+            rgba(15, 23, 42, 0) 72%
           );
         }
 
         .trail-uncommon {
           background: radial-gradient(
             circle,
-            rgba(52, 211, 153, 0.55) 0%,
-            rgba(15, 23, 42, 0) 70%
+            rgba(52, 211, 153, 0.7) 0%,
+            rgba(15, 23, 42, 0) 74%
           );
         }
 
         .trail-rare {
           background: radial-gradient(
             circle,
-            rgba(168, 85, 247, 0.6) 0%,
-            rgba(15, 23, 42, 0) 72%
+            rgba(168, 85, 247, 0.75) 0%,
+            rgba(15, 23, 42, 0) 75%
           );
         }
 
         .trail-epic {
           background: radial-gradient(
             circle,
-            rgba(239, 68, 68, 0.65) 0%,
-            rgba(15, 23, 42, 0) 72%
+            rgba(239, 68, 68, 0.8) 0%,
+            rgba(15, 23, 42, 0) 76%
           );
         }
 
         .trail-legendary {
-          background: conic-gradient(
-            from 0deg,
-            rgba(236, 72, 153, 0.7),
-            rgba(249, 115, 22, 0.7),
-            rgba(250, 204, 21, 0.7),
-            rgba(34, 197, 94, 0.7),
-            rgba(59, 130, 246, 0.7),
-            rgba(168, 85, 247, 0.7),
-            rgba(236, 72, 153, 0.7)
-          );
+          background:
+            radial-gradient(
+              circle,
+              rgba(255, 255, 255, 0.8) 0%,
+              rgba(15, 23, 42, 0.08) 35%,
+              rgba(15, 23, 42, 0) 70%
+            ),
+            conic-gradient(
+              from 0deg,
+              rgba(236, 72, 153, 0.9),
+              rgba(249, 115, 22, 0.9),
+              rgba(250, 204, 21, 0.9),
+              rgba(34, 197, 94, 0.9),
+              rgba(59, 130, 246, 0.9),
+              rgba(168, 85, 247, 0.9),
+              rgba(236, 72, 153, 0.9)
+            );
         }
 
         .feed-mode .trail-dot {
-          filter: blur(20px);
+          filter: blur(22px);
         }
 
         .pellet {
@@ -888,7 +820,6 @@ export default function AquariumPage() {
           }
         }
 
-        /* SHADOW FISH PNG (behind bubbles & front fish) */
         .shadow-layer {
           position: absolute;
           inset: 0;
@@ -904,7 +835,6 @@ export default function AquariumPage() {
           filter: blur(3px);
         }
 
-        /* single path: left → right, rarely appears */
         .shadow-fish-ltr {
           top: 50%;
           animation: shadowSwimLeftToRight 60s linear infinite;
@@ -931,7 +861,6 @@ export default function AquariumPage() {
           }
         }
 
-        /* BUBBLES */
         .bubble-layer {
           position: absolute;
           inset: 0;
@@ -1041,18 +970,17 @@ type BadgeProps = {
 };
 
 function Badge({ label, value }: BadgeProps) {
-  // dot color per rarity
-  let dotColorClass = "bg-slate-400"; // default gray
+  let dotColorClass = "bg-slate-400";
 
   const lower = label.toLowerCase();
   if (lower === "uncommon") {
-    dotColorClass = "bg-emerald-400"; // green
+    dotColorClass = "bg-emerald-400";
   } else if (lower === "rare") {
-    dotColorClass = "bg-sky-400"; // blue
+    dotColorClass = "bg-sky-400";
   } else if (lower === "epic") {
-    dotColorClass = "bg-amber-400"; // orange/gold
+    dotColorClass = "bg-amber-400";
   } else if (lower === "legendary") {
-    dotColorClass = "bg-red-500"; // bright red
+    dotColorClass = "bg-red-500";
   }
 
   return (
