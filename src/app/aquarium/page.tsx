@@ -451,7 +451,7 @@ export default function AquariumPage() {
                     <img
                       src={f.imageUrl}
                       alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                      className="fish-img"
+                      className="fish-img fish-swim-loop fish-float-loop"
                       draggable={false}
                     />
                   </div>
@@ -523,7 +523,7 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* PURE STATIC IMAGE: NO NODDING, NO PULSE, ONLY MOVEMENT FROM JS */
+        /* STATIC SIZE & GLOW; SWIM/FLOAT ANIMATIONS COME FROM GLOBAL CSS CLASSES */
         .fish-img {
           width: 4.5rem;
           height: 4.5rem;

@@ -287,3 +287,54 @@ h6 {
     opacity: 0;
   }
 }
+
+/* ================================
+   FISH SWIM ANIMATIONS
+   - used in aquarium/page.tsx via:
+   - className="fish-img fish-swim-loop fish-float-loop"
+================================ */
+
+.fish-swim-loop {
+  animation: fish-sway 2.8s ease-in-out infinite;
+  transform-origin: 40% 50%;
+}
+
+.fish-float-loop {
+  animation: fish-float 7s ease-in-out infinite;
+}
+
+@keyframes fish-sway {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-1px) rotate(1.1deg) scale(1.01);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  75% {
+    transform: translateY(1px) rotate(-1.1deg) scale(0.99);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes fish-float {
+  0% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-6px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+  75% {
+    transform: translateY(5px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
