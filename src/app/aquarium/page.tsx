@@ -1,525 +1,227 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import { sdk } from "@farcaster/miniapp-sdk";
-import { createPublicClient, http } from "viem";
-import { base } from "viem/chains";
 
 type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY";
 
-type FishToken = {
-  tokenId: bigint;
-  rarity: Rarity;
+type Fish = {
+  id: string;
   imageUrl: string;
+  rarity: Rarity;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  facing: "left" | "right";
 };
-
-type PositionedFish = FishToken & {
-  top: number;
-  left: number;
-  duration: number;
-  delay: number;
-};
-
-const BETTA_CONTRACT_ADDRESS = process.env
-  .NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}` | undefined;
-
-const RPC_URL =
-  process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
-
-// Minimal ABI: nextTokenId, balanceOf, ownerOf, tokenURI
-const BETTA_ABI = [
-  {
-    type: "function",
-    name: "nextTokenId",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "balanceOf",
-    stateMutability: "view",
-    inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ name: "balance", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "ownerOf",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "owner", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "tokenURI",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "uri", type: "string" }],
-  },
-] as const;
-
-// Map rarity to local sprite in /public
-const RARITY_SPRITES: Record<Rarity, string> = {
-  COMMON: "/common.png",
-  UNCOMMON: "/uncommon.png",
-  RARE: "/rare.png",
-  EPIC: "/epic.png",
-  LEGENDARY: "/legendary.png",
-};
-
-function ipfsToHttp(uri: string): string {
-  if (!uri) return uri;
-  if (uri.startsWith("ipfs://")) {
-    return "https://ipfs.io/ipfs/" + uri.replace("ipfs://", "");
-  }
-  return uri;
-}
-
-function detectRarityFromMetadata(meta: any): Rarity {
-  if (!meta) return "COMMON";
-
-  const attributeRarity = Array.isArray(meta.attributes)
-    ? meta.attributes.find(
-        (attr: any) =>
-          String(attr?.trait_type).toLowerCase() === "rarity" && attr?.value
-      )?.value
-    : undefined;
-
-  const raw =
-    attributeRarity ??
-    meta.rarity ??
-    meta.Rarity ??
-    (meta.attributes && (meta.attributes.Rarity as any)) ??
-    "";
-
-  const normalized = String(raw).toUpperCase();
-
-  if (normalized === "UNCOMMON") return "UNCOMMON";
-  if (normalized === "RARE") return "RARE";
-  if (normalized === "EPIC") return "EPIC";
-  if (normalized === "LEGENDARY") return "LEGENDARY";
-  return "COMMON";
-}
-
-function createRandomMotion(): {
-  top: number;
-  left: number;
-  duration: number;
-  delay: number;
-} {
-  return {
-    top: 10 + Math.random() * 60,
-    left: 5 + Math.random() * 70,
-    duration: 9 + Math.random() * 6,
-    delay: Math.random() * 4,
-  };
-}
 
 export default function AquariumPage() {
-  const [isInMiniApp, setIsInMiniApp] = useState<boolean | null>(null);
   const [fid, setFid] = useState<number | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [fish, setFish] = useState<PositionedFish[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [fishList, setFishList] = useState<Fish[]>([]);
   const [isFeeding, setIsFeeding] = useState(false);
+  const [feedCount, setFeedCount] = useState(0);
 
+  // Load Farcaster context (FID + wallet)
   useEffect(() => {
-    let cancelled = false;
+    let isMounted = true;
 
-    async function bootstrap() {
+    const loadContext = async () => {
       try {
-        const mini = await sdk.isInMiniApp();
-        if (cancelled) return;
-        setIsInMiniApp(mini);
+        const context = await sdk.context;
+        if (!isMounted) return;
 
-        if (!mini) {
-          setError("This page is intended to be opened inside a Farcaster Mini App.");
-          setIsLoading(false);
-          await sdk.actions.ready();
-          return;
-        }
+        const anyContext = context as any;
 
-        const ctx: any = await sdk.context;
-        if (cancelled) return;
-        const ctxFid = ctx?.user?.fid as number | undefined;
-        if (ctxFid) {
-          setFid(ctxFid);
-        }
+        const userFid = anyContext.user?.fid ?? null;
+        const address = anyContext.wallet?.address ?? null;
 
-        if (!BETTA_CONTRACT_ADDRESS) {
-          setError("Betta contract address is not configured.");
-          setIsLoading(false);
-          await sdk.actions.ready();
-          return;
-        }
-
-        const provider = await sdk.wallet.getEthereumProvider();
-        const accounts = (await (provider as any).request({
-          method: "eth_accounts",
-          params: [],
-        })) as string[];
-
-        let address = accounts && accounts[0];
-
-        if (!address) {
-          const requested = (await (provider as any).request({
-            method: "eth_requestAccounts",
-            params: [],
-          })) as string[];
-          address = requested && requested[0];
-        }
-
-        if (!address) {
-          setError("No connected EVM wallet found in this Mini App.");
-          setIsLoading(false);
-          await sdk.actions.ready();
-          return;
-        }
-
+        setFid(userFid);
         setWalletAddress(address);
-
-        const client = createPublicClient({
-          chain: base,
-          transport: http(RPC_URL),
-        });
-
-        const ZERO = BigInt(0);
-
-        // Quick check: if balanceOf == 0 -> aquarium empty
-        const balance = (await client.readContract({
-          address: BETTA_CONTRACT_ADDRESS,
-          abi: BETTA_ABI,
-          functionName: "balanceOf",
-          args: [address as `0x${string}`],
-        })) as bigint;
-
-        if (balance === ZERO) {
-          setFish([]);
-          setIsLoading(false);
-          await sdk.actions.ready();
-          return;
-        }
-
-        // Get total minted via nextTokenId (public)
-        const nextTokenIdValue = (await client.readContract({
-          address: BETTA_CONTRACT_ADDRESS,
-          abi: BETTA_ABI,
-          functionName: "nextTokenId",
-          args: [],
-        })) as bigint;
-
-        const ONE = BigInt(1);
-
-        if (nextTokenIdValue <= ONE) {
-          setFish([]);
-          setIsLoading(false);
-          await sdk.actions.ready();
-          return;
-        }
-
-        const maxTokenId = nextTokenIdValue - ONE;
-
-        // For safety, cap how many tokens we scan (e.g. first 500)
-        const HARD_CAP = BigInt(500);
-        const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
-
-        const fishes: PositionedFish[] = [];
-
-        for (let id = ONE; id <= endTokenId; id = id + ONE) {
-          try {
-            const owner = (await client.readContract({
-              address: BETTA_CONTRACT_ADDRESS,
-              abi: BETTA_ABI,
-              functionName: "ownerOf",
-              args: [id],
-            })) as string;
-
-            if (owner.toLowerCase() !== address.toLowerCase()) {
-              continue;
-            }
-
-            const rawUri = (await client.readContract({
-              address: BETTA_CONTRACT_ADDRESS,
-              abi: BETTA_ABI,
-              functionName: "tokenURI",
-              args: [id],
-            })) as string;
-
-            const metadataUrl = ipfsToHttp(rawUri);
-            const res = await fetch(metadataUrl);
-            const meta = res.ok ? await res.json() : null;
-
-            const rarity = detectRarityFromMetadata(meta);
-            const spriteUrl = RARITY_SPRITES[rarity];
-            const motion = createRandomMotion();
-
-            fishes.push({
-              tokenId: id,
-              rarity,
-              imageUrl: spriteUrl,
-              ...motion,
-            });
-          } catch (perTokenError) {
-            console.error("Error loading token", id.toString(), perTokenError);
-          }
-        }
-
-        if (!cancelled) {
-          setFish(fishes);
-          setIsLoading(false);
-        }
-
-        await sdk.actions.ready();
-      } catch (e) {
-        console.error(e);
-        if (!cancelled) {
-          setError("Something went wrong while loading your aquarium.");
-          setIsLoading(false);
-        }
-        await sdk.actions.ready();
+      } catch (error) {
+        console.error("Failed to load Farcaster context:", error);
       }
-    }
+    };
 
-    bootstrap();
-
+    loadContext();
     return () => {
-      cancelled = true;
+      isMounted = false;
     };
   }, []);
 
+  // Initialize 1 demo fish (replace imageUrl with your new PNG later)
   useEffect(() => {
-    if (!isFeeding) return;
-    const id = setTimeout(() => setIsFeeding(false), 1500);
-    return () => clearTimeout(id);
-  }, [isFeeding]);
+    setFishList([
+      {
+        id: "fish-1",
+        imageUrl:
+          "https://ipfs.io/ipfs/bafybeigqco3p2wghywrvogldw75twvn53z2vsoaqxyjsncqskn4jlt6p7u/common.png",
+        rarity: "COMMON",
+        x: 50,
+        y: 40,
+        vx: 0.12,
+        vy: 0.08,
+        facing: "right",
+      },
+    ]);
+  }, []);
 
-  const raritySummary = useMemo(() => {
-    const counts: Record<Rarity, number> = {
-      COMMON: 0,
-      UNCOMMON: 0,
-      RARE: 0,
-      EPIC: 0,
-      LEGENDARY: 0,
+  // Swimming animation
+  useEffect(() => {
+    let frame: number;
+
+    const animate = () => {
+      setFishList((prev) =>
+        prev.map((fish) => {
+          let { x, y, vx, vy, facing } = fish;
+
+          x += vx;
+          y += vy;
+
+          const minX = 5;
+          const maxX = 95;
+          const minY = 10;
+          const maxY = 90;
+
+          if (x < minX) {
+            x = minX;
+            vx = Math.abs(vx);
+            facing = "right";
+          } else if (x > maxX) {
+            x = maxX;
+            vx = -Math.abs(vx);
+            facing = "left";
+          }
+
+          if (y < minY) {
+            y = minY;
+            vy = Math.abs(vy);
+          } else if (y > maxY) {
+            y = maxY;
+            vy = -Math.abs(vy);
+          }
+
+          return { ...fish, x, y, vx, vy, facing };
+        })
+      );
+
+      frame = window.requestAnimationFrame(animate);
     };
-    for (const f of fish) {
-      counts[f.rarity] += 1;
-    }
-    return counts;
-  }, [fish]);
 
-  const handleFeedClick = () => {
-    if (!fish.length) return;
+    frame = window.requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const handleFeed = () => {
+    setFeedCount((c) => c + 1);
     setIsFeeding(true);
+    setTimeout(() => setIsFeeding(false), 400);
   };
 
-  if (isInMiniApp === false) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-slate-100 px-6">
-        <p className="text-center text-sm">
-          Please open this page from your Farcaster Mini App to see your Betta aquarium.
-        </p>
-      </div>
-    );
-  }
+  const formatAddress = (addr: string | null) => {
+    if (!addr) return "-";
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50 px-4 pb-8 pt-6">
-      <div className="w-full max-w-md space-y-4">
-        <header className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Betta Aquarium</h1>
-          <p className="text-xs text-slate-400">
-            FID {fid ?? "-"}{" "}
-            {walletAddress
-              ? "• " +
-                walletAddress.slice(0, 6) +
-                "..." +
-                walletAddress.slice(-4)
-              : "• wallet not detected"}
-          </p>
-        </header>
-
-        <section
-          className={
-            "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl border border-sky-500/40 bg-gradient-to-b from-slate-900/90 via-slate-950/90 to-slate-900/90 overflow-hidden shadow-[0_0_40px_rgba(56,189,248,0.6)]" +
-            (isFeeding ? " feed-mode" : "")
-          }
-        >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(14,165,233,0.2),transparent_55%)]" />
-
-          <div className="pointer-events-none absolute inset-0 opacity-40 mix-blend-screen">
-            <div className="absolute -left-10 bottom-0 w-32 h-32 rounded-full border border-sky-500/20" />
-            <div className="absolute left-8 top-8 w-20 h-20 rounded-full border border-cyan-400/20" />
-            <div className="absolute right-4 bottom-16 w-14 h-14 rounded-full border border-sky-300/30" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-black text-sky-50 px-3 py-4">
+      <div className="w-[360px] sm:w-[390px] h-[720px] rounded-[32px] bg-gradient-to-b from-[#051625] via-[#020818] to-[#01030a] shadow-[0_0_80px_rgba(56,189,248,0.45)] border border-cyan-600/40 overflow-hidden relative">
+        {/* Header */}
+        <div className="pt-6 pb-2 text-center space-y-1">
+          <h1 className="text-2xl font-black tracking-[0.16em] text-sky-50 drop-shadow-[0_0_20px_rgba(56,189,248,0.8)]">
+            BETTA AQUARIUM
+          </h1>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70 flex items-center justify-center gap-3">
+            <span>FID {fid ?? "–"}</span>
+            <span className="opacity-70">
+              {walletAddress ? formatAddress(walletAddress) : "No wallet"}
+            </span>
           </div>
+        </div>
 
-          <div className="relative w-full h-full">
-            {isLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-sky-100">
-                <div className="h-10 w-10 rounded-full border-2 border-sky-400/60 border-t-transparent animate-spin" />
-                <span>Loading your fish...</span>
-              </div>
-            )}
-
-            {!isLoading && error && (
-              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-red-200">
-                {error}
-              </div>
-            )}
-
-            {!isLoading && !error && !fish.length && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center text-sm text-slate-200">
-                <p>Your aquarium is empty for now.</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  Hatch or buy a Betta NFT to see it swim here.
-                </p>
-              </div>
-            )}
-
-            {!isLoading &&
-              !error &&
-              fish.map((f) => (
+        {/* Tank */}
+        <div className="px-4 mt-4">
+          <div
+            className={`relative w-full h-[420px] rounded-[28px] border border-cyan-300/30 bg-gradient-to-b from-[#051626] via-[#020717] to-[#00010a] overflow-hidden transition-shadow ${
+              isFeeding
+                ? "shadow-[0_0_50px_rgba(56,189,248,0.85)]"
+                : "shadow-[0_0_40px_rgba(15,23,42,0.9)]"
+            }`}
+          >
+            <div className="absolute inset-0">
+              {fishList.map((fish) => (
                 <div
-                  key={f.tokenId.toString()}
-                  className="absolute"
+                  key={fish.id}
+                  className="absolute transition-transform"
                   style={{
-                    top: f.top + "%",
-                    left: f.left + "%",
-                    animationDuration: f.duration + "s",
-                    animationDelay: f.delay + "s",
+                    left: `${fish.x}%`,
+                    top: `${fish.y}%`,
+                    transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <img
-                    src={f.imageUrl}
-                    alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                    className="fish-sprite swim w-24 h-24 object-contain drop-shadow-[0_0_18px_rgba(56,189,248,0.8)]"
-                    draggable={false}
-                  />
+                  <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-[24px] bg-gradient-to-b from-sky-500/20 via-sky-400/10 to-sky-900/5 flex items-center justify-center shadow-[0_0_35px_rgba(56,189,248,0.65)]">
+                    <div
+                      className={`relative w-24 h-24 sm:w-28 sm:h-28 ${
+                        fish.facing === "left" ? "scale-x-[-1]" : ""
+                      }`}
+                    >
+                      <Image
+                        src={fish.imageUrl}
+                        alt={fish.rarity}
+                        fill
+                        priority
+                        className="object-contain"
+                      />
+                    </div>
+                  </div>
                 </div>
               ))}
+            </div>
 
-            {isFeeding && (
-              <>
-                <div className="pellet" style={{ left: "30%", top: "6%" }} />
-                <div className="pellet" style={{ left: "50%", top: "4%" }} />
-                <div className="pellet" style={{ left: "65%", top: "7%" }} />
-                <div className="pellet" style={{ left: "40%", top: "3%" }} />
-              </>
-            )}
-
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-2 text-[10px] text-slate-200">
-              <div className="flex items-center justify-between gap-2">
-                <span className="uppercase tracking-[0.16em] text-slate-400">
-                  Rarity
-                </span>
-                <span className="text-slate-400">
-                  {fish.length} fish total
-                </span>
+            {/* Bottom info */}
+            <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent backdrop-blur-[14px]">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-sky-200/70 mb-2">
+                <span>Rarity</span>
+                <span>{fishList.length} Fish Total</span>
               </div>
-              <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
-                <Badge label="Common" value={raritySummary.COMMON} />
-                <Badge label="Uncommon" value={raritySummary.UNCOMMON} />
-                <Badge label="Rare" value={raritySummary.RARE} />
-                <Badge label="Epic" value={raritySummary.EPIC} />
-                <Badge label="Legendary" value={raritySummary.LEGENDARY} />
+
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <span className="px-3 py-1 rounded-full bg-sky-900/60 border border-sky-400/70 text-sky-50">
+                  ● Common {fishList.filter((f) => f.rarity === "COMMON").length}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
+                  ● Uncommon {fishList.filter((f) => f.rarity === "UNCOMMON").length}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
+                  ● Rare {fishList.filter((f) => f.rarity === "RARE").length}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
+                  ● Epic {fishList.filter((f) => f.rarity === "EPIC").length}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
+                  ● Legendary {fishList.filter((f) => f.rarity === "LEGENDARY").length}
+                </span>
               </div>
             </div>
           </div>
-        </section>
+        </div>
 
-        <div className="flex items-center justify-between mt-1">
+        {/* Feed button */}
+        <div className="px-4 mt-5">
           <button
-            type="button"
-            onClick={handleFeedClick}
-            className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-6 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-sky-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLoading || !!error || !fish.length}
+            onClick={handleFeed}
+            className="w-full h-12 rounded-full bg-gradient-to-r from-sky-400 to-cyan-400 text-slate-950 font-semibold text-sm tracking-[0.16em] uppercase shadow-[0_0_30px_rgba(56,189,248,0.9)] border border-sky-100/80 active:scale-[0.97] transition-transform"
           >
-            Feed
+            Feed {feedCount > 0 ? `(${feedCount})` : ""}
           </button>
-          <span className="text-[10px] text-slate-500">
+
+          <p className="mt-3 text-[10px] text-center text-sky-100/70 tracking-[0.16em] uppercase">
             Fish move in soft loops. Feeding adds a short glow.
-          </span>
+          </p>
         </div>
       </div>
-
-      <style jsx global>{`
-        /* Bigger swimming path: move left, right, up, and down */
-        @keyframes swim {
-          0% {
-            transform: translate3d(-30px, -10px, 0) scale(1);
-          }
-          25% {
-            transform: translate3d(25px, -25px, 0) scale(1.03);
-          }
-          50% {
-            transform: translate3d(45px, 10px, 0) scale(1);
-          }
-          75% {
-            transform: translate3d(-15px, 25px, 0) scale(0.98);
-          }
-          100% {
-            transform: translate3d(-30px, -10px, 0) scale(1);
-          }
-        }
-
-        .swim {
-          animation-name: swim;
-          animation-timing-function: ease-in-out;
-          animation-iteration-count: infinite;
-          animation-direction: alternate;
-        }
-
-        /* Try to hide black background from non-transparent PNGs */
-        .fish-sprite {
-          mix-blend-mode: screen;
-        }
-
-        .feed-mode .swim {
-          filter: drop-shadow(0 0 22px rgba(250, 204, 21, 0.95));
-        }
-
-        .pellet {
-          position: absolute;
-          width: 6px;
-          height: 6px;
-          border-radius: 9999px;
-          background: #facc15;
-          opacity: 0;
-          animation: pelletDrop 1.2s ease-out forwards;
-        }
-
-        @keyframes pelletDrop {
-          0% {
-            transform: translateY(-10px);
-            opacity: 0;
-          }
-          30% {
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(40px);
-            opacity: 0;
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-type BadgeProps = {
-  label: string;
-  value: number;
-};
-
-function Badge({ label, value }: BadgeProps) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-full bg-slate-900/70 px-2.5 py-1 border border-slate-700/70">
-      <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-      <span className="uppercase tracking-[0.18em] text-[9px] text-slate-300">
-        {label}
-      </span>
-      <span className="text-[10px] text-slate-100 font-semibold">{value}</span>
     </div>
   );
 }
