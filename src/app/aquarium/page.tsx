@@ -13,19 +13,15 @@ type FishToken = {
   imageUrl: string;
 };
 
-type MovingFish = FishToken & {
-  x: number; // 0 - 100 percentage (horizontal)
-  y: number; // 0 - 100 percentage (vertical)
-  vx: number; // delta per frame
-  vy: number;
-  phase: number; // wave phase
-  phaseSpeed: number;
+type PositionedFish = FishToken & {
+  top: number;
+  left: number;
+  duration: number;
+  delay: number;
 };
 
-// Fallback ke kontrak betta kamu kalau env tidak di-set / salah
-const BETTA_CONTRACT_ADDRESS =
-  (process.env.NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}` | undefined) ??
-  ("0x48a8443f006729729439f9bc529f905c05380bb7" as `0x${string}`);
+const BETTA_CONTRACT_ADDRESS = process.env
+  .NEXT_PUBLIC_BETTA_CONTRACT as `0x${string}` | undefined;
 
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
@@ -62,21 +58,13 @@ const BETTA_ABI = [
   },
 ] as const;
 
-// Map rarity to local sprite in /public (transparent PNGs)
+// Map rarity to local sprite in /public
 const RARITY_SPRITES: Record<Rarity, string> = {
   COMMON: "/common.png",
   UNCOMMON: "/uncommon.png",
   RARE: "/rare.png",
   EPIC: "/epic.png",
   LEGENDARY: "/legendary.png",
-};
-
-const RARITY_SCALE: Record<Rarity, number> = {
-  COMMON: 0.9,
-  UNCOMMON: 1.0,
-  RARE: 1.05,
-  EPIC: 1.12,
-  LEGENDARY: 1.2,
 };
 
 function ipfsToHttp(uri: string): string {
@@ -113,26 +101,17 @@ function detectRarityFromMetadata(meta: any): Rarity {
   return "COMMON";
 }
 
-function createInitialMotion(index: number): {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  phase: number;
-  phaseSpeed: number;
+function createRandomMotion(): {
+  top: number;
+  left: number;
+  duration: number;
+  delay: number;
 } {
-  const baseX = 20 + ((index * 18) % 60) + Math.random() * 5;
-  const baseY = 25 + ((index * 10) % 40) + (Math.random() * 6 - 3);
-  const direction = index % 2 === 0 ? 1 : -1;
-  const speed = 0.07 + (index % 3) * 0.02;
-
   return {
-    x: baseX,
-    y: baseY,
-    vx: speed * direction,
-    vy: 0.04 * (direction > 0 ? 1 : -1),
-    phase: Math.random() * Math.PI * 2,
-    phaseSpeed: 0.05 + Math.random() * 0.03,
+    top: 10 + Math.random() * 60,
+    left: 5 + Math.random() * 70,
+    duration: 9 + Math.random() * 6,
+    delay: Math.random() * 4,
   };
 }
 
@@ -140,12 +119,11 @@ export default function AquariumPage() {
   const [isInMiniApp, setIsInMiniApp] = useState<boolean | null>(null);
   const [fid, setFid] = useState<number | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [fish, setFish] = useState<MovingFish[]>([]);
+  const [fish, setFish] = useState<PositionedFish[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFeeding, setIsFeeding] = useState(false);
 
-  // Bootstrapping: detect miniapp, wallet, NFTs
   useEffect(() => {
     let cancelled = false;
 
@@ -165,7 +143,9 @@ export default function AquariumPage() {
         const ctx: any = await sdk.context;
         if (cancelled) return;
         const ctxFid = ctx?.user?.fid as number | undefined;
-        if (ctxFid) setFid(ctxFid);
+        if (ctxFid) {
+          setFid(ctxFid);
+        }
 
         if (!BETTA_CONTRACT_ADDRESS) {
           setError("Betta contract address is not configured.");
@@ -174,7 +154,6 @@ export default function AquariumPage() {
           return;
         }
 
-        // Get wallet from Farcaster miniapp provider
         const provider = await sdk.wallet.getEthereumProvider();
         const accounts = (await (provider as any).request({
           method: "eth_accounts",
@@ -215,8 +194,6 @@ export default function AquariumPage() {
           args: [address as `0x${string}`],
         })) as bigint;
 
-        console.log("Aquarium balanceOf:", balance.toString());
-
         if (balance === ZERO) {
           setFish([]);
           setIsLoading(false);
@@ -232,27 +209,24 @@ export default function AquariumPage() {
           args: [],
         })) as bigint;
 
-        console.log("Aquarium nextTokenId:", nextTokenIdValue.toString());
+        const ONE = BigInt(1);
 
-        if (nextTokenIdValue === ZERO) {
+        if (nextTokenIdValue <= ONE) {
           setFish([]);
           setIsLoading(false);
           await sdk.actions.ready();
           return;
         }
 
-        // Di banyak kontrak, tokenId mulai dari 0 dan nextTokenId = totalSupply (0..nextTokenId-1)
-        const maxTokenId = nextTokenIdValue - BigInt(1);
+        const maxTokenId = nextTokenIdValue - ONE;
 
-        // Cap scan sampai 500 token pertama
+        // For safety, cap how many tokens we scan (e.g. first 500)
         const HARD_CAP = BigInt(500);
         const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
-        const fishes: MovingFish[] = [];
-        let index = 0;
+        const fishes: PositionedFish[] = [];
 
-        // SCAN tokenId DARI 0 SAMPAI endTokenId (bukan mulai 1 lagi)
-        for (let id = BigInt(0); id <= endTokenId; id = id + BigInt(1)) {
+        for (let id = ONE; id <= endTokenId; id = id + ONE) {
           try {
             const owner = (await client.readContract({
               address: BETTA_CONTRACT_ADDRESS,
@@ -278,7 +252,7 @@ export default function AquariumPage() {
 
             const rarity = detectRarityFromMetadata(meta);
             const spriteUrl = RARITY_SPRITES[rarity];
-            const motion = createInitialMotion(index++);
+            const motion = createRandomMotion();
 
             fishes.push({
               tokenId: id,
@@ -312,58 +286,6 @@ export default function AquariumPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Real swimming animation (move around aquarium with waves)
-  useEffect(() => {
-    let frame: number;
-
-    const animate = () => {
-      setFish((prev) =>
-        prev.map((f) => {
-          let { x, y, vx, vy, phase, phaseSpeed } = f;
-
-          x += vx;
-          y += vy;
-          phase += phaseSpeed;
-
-          const minX = 8;
-          const maxX = 92;
-          const minY = 18;
-          const maxY = 88;
-
-          if (x < minX) {
-            x = minX;
-            vx = Math.abs(vx);
-          } else if (x > maxX) {
-            x = maxX;
-            vx = -Math.abs(vx);
-          }
-
-          if (y < minY) {
-            y = minY;
-            vy = Math.abs(vy);
-          } else if (y > maxY) {
-            y = maxY;
-            vy = -Math.abs(vy);
-          }
-
-          return {
-            ...f,
-            x,
-            y,
-            vx,
-            vy,
-            phase,
-          };
-        })
-      );
-
-      frame = window.requestAnimationFrame(animate);
-    };
-
-    frame = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -423,8 +345,8 @@ export default function AquariumPage() {
             (isFeeding ? " feed-mode" : "")
           }
         >
-          {/* Background glow & circles */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(14,165,233,0.2),transparent_55%)]" />
+
           <div className="pointer-events-none absolute inset-0 opacity-40 mix-blend-screen">
             <div className="absolute -left-10 bottom-0 w-32 h-32 rounded-full border border-sky-500/20" />
             <div className="absolute left-8 top-8 w-20 h-20 rounded-full border border-cyan-400/20" />
@@ -454,37 +376,28 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* Moving fish layer */}
             {!isLoading &&
               !error &&
-              fish.map((f) => {
-                const visualY = f.y + Math.sin(f.phase) * 2;
-                const angle = Math.sin(f.phase * 1.6) * 5;
-                const scale = RARITY_SCALE[f.rarity];
+              fish.map((f) => (
+                <div
+                  key={f.tokenId.toString()}
+                  className="absolute"
+                  style={{
+                    top: f.top + "%",
+                    left: f.left + "%",
+                    animationDuration: f.duration + "s",
+                    animationDelay: f.delay + "s",
+                  }}
+                >
+                  <img
+                    src={f.imageUrl}
+                    alt={f.rarity + " Betta #" + f.tokenId.toString()}
+                    className="swim w-24 h-24 object-contain drop-shadow-[0_0_18px_rgba(56,189,248,0.8)]"
+                    draggable={false}
+                  />
+                </div>
+              ))}
 
-                const transform = `translate(-50%, -50%) rotate(${angle}deg) scale(${scale})`;
-
-                return (
-                  <div
-                    key={f.tokenId.toString()}
-                    className="absolute"
-                    style={{
-                      left: `${f.x}%`,
-                      top: `${visualY}%`,
-                      transform,
-                    }}
-                  >
-                    <img
-                      src={f.imageUrl}
-                      alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                      className="w-24 h-24 object-contain drop-shadow-[0_0_20px_rgba(56,189,248,0.9)]"
-                      draggable={false}
-                    />
-                  </div>
-                );
-              })}
-
-            {/* Feed pellets */}
             {isFeeding && (
               <>
                 <div className="pellet" style={{ left: "30%", top: "6%" }} />
@@ -494,7 +407,6 @@ export default function AquariumPage() {
               </>
             )}
 
-            {/* Bottom overlay + rarity summary */}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-2 text-[10px] text-slate-200">
               <div className="flex items-center justify-between gap-2">
@@ -526,13 +438,32 @@ export default function AquariumPage() {
             Feed
           </button>
           <span className="text-[10px] text-slate-500">
-            Fish move in looping waves. Feeding adds a short glow.
+            Fish move in soft loops. Feeding adds a short glow.
           </span>
         </div>
       </div>
 
       <style jsx global>{`
-        .feed-mode img {
+        @keyframes swim {
+          0% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          50% {
+            transform: translate3d(12px, -6px, 0) scale(1.03);
+          }
+          100% {
+            transform: translate3d(-8px, 10px, 0) scale(1);
+          }
+        }
+
+        .swim {
+          animation-name: swim;
+          animation-timing-function: ease-in-out;
+          animation-iteration-count: infinite;
+          animation-direction: alternate;
+        }
+
+        .feed-mode .swim {
           filter: drop-shadow(0 0 22px rgba(250, 204, 21, 0.95));
         }
 
