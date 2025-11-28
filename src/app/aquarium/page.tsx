@@ -16,7 +16,7 @@ type FishToken = {
 type TrailPoint = {
   x: number; // 0-100 (%)
   y: number; // 0-100 (%)
-  life: number; // 0-1, used for opacity and scale
+  life: number; // 0-1 (dipakai untuk opacity & scale)
 };
 
 type MovingFish = FishToken & {
@@ -235,31 +235,16 @@ export default function AquariumPage() {
           return;
         }
 
-        // Highest minted token id
         const maxTokenId = nextTokenIdValue - ONE;
 
-        // Scan only the most recent HARD_CAP tokens
         const HARD_CAP = BigInt(500);
-        const windowSize = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
-
-        let startTokenId = maxTokenId;
-        let endTokenId = maxTokenId - windowSize + ONE;
-        if (endTokenId < ONE) {
-          endTokenId = ONE;
-        }
+        const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
         const fishes: MovingFish[] = [];
         let index = 0;
         let found = 0;
-        const scanStartedAt = Date.now();
 
-        for (let id = startTokenId; id >= endTokenId; id = id - ONE) {
-          // Safety timeout so we never get stuck forever
-          if (Date.now() - scanStartedAt > 12000) {
-            console.warn("Aquarium scan timeout; stopping early");
-            break;
-          }
-
+        for (let id = ONE; id <= endTokenId; id = id + ONE) {
           try {
             const owner = (await client.readContract({
               address: BETTA_CONTRACT_ADDRESS,
@@ -298,7 +283,6 @@ export default function AquariumPage() {
 
             found += 1;
             if (found >= balanceNum) {
-              // All fish for this wallet have been found
               break;
             }
           } catch (perTokenError) {
@@ -338,7 +322,7 @@ export default function AquariumPage() {
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
-          // Small wander to avoid straight lines
+          // wander kecil
           const wanderStrengthX = 0.01;
           const wanderStrengthY = 0.008;
 
@@ -388,10 +372,12 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          // Motion trail (aura tail)
-          const MAX_TRAIL_POINTS = 28;
-          const DECAY = 0.035;
-          const offsetMultiplier = 24;
+          // --- MOTION TRAIL (AURA EKOR) ---
+          const MAX_TRAIL_POINTS = 16;
+          const DECAY = 0.07;
+
+          // semakin besar offsetMultiplier → ekor lebih panjang di belakang
+          const offsetMultiplier = 30;
 
           const trailHeadX = x - vx * offsetMultiplier;
           const trailHeadY = y - vy * offsetMultiplier;
@@ -546,7 +532,7 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* Aura tail trail */}
+            {/* AURA TAIL TRAIL: deretan blur bulat di jalur belakang ikan */}
             {!isLoading &&
               !error &&
               fish.map((f) =>
@@ -562,8 +548,7 @@ export default function AquariumPage() {
                       ? "trail-epic"
                       : "trail-legendary";
 
-                  // New point (life=1) is largest, old points shrink
-                  const scale = 0.3 + 1.0 * p.life; // 1.3 -> 0.3
+                  const scale = 0.4 + 0.6 * p.life;
 
                   return (
                     <div
@@ -580,7 +565,7 @@ export default function AquariumPage() {
                 })
               )}
 
-            {/* Main fish */}
+            {/* IKAN UTAMA */}
             {!isLoading &&
               !error &&
               fish.map((f) => {
@@ -716,7 +701,7 @@ export default function AquariumPage() {
           transform: none;
         }
 
-        /* Outer outline per rarity */
+        /* OUTER LINE SESUAI RARITY (outline ngikut bentuk ikan) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 3px rgba(148, 163, 184, 1))
@@ -755,17 +740,18 @@ export default function AquariumPage() {
             drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
         }
 
-        /* Aura tail dots (nyan-cat style) */
+        /* AURA TRAIL DOTS (ekor) */
         .trail-dot {
           position: absolute;
-          width: 4.8rem;
-          height: 4.8rem;
+          width: 3.4rem;
+          height: 3.4rem;
           border-radius: 9999px;
           pointer-events: none;
           z-index: 2;
-          filter: blur(12px);
+          filter: blur(10px);
         }
 
+        /* warna tail per rarity */
         .trail-common {
           background: radial-gradient(
             circle,
@@ -814,7 +800,7 @@ export default function AquariumPage() {
         }
 
         .feed-mode .trail-dot {
-          filter: blur(14px);
+          filter: blur(12px);
         }
 
         .pellet {
