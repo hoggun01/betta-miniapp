@@ -10,11 +10,12 @@ type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY";
 type FishToken = {
   tokenId: bigint;
   rarity: Rarity;
+  imageUrl: string;
 };
 
 type MovingFish = FishToken & {
-  x: number;
-  y: number;
+  x: number; // 0-100 (horizontal, %)
+  y: number; // 0-100 (vertical, %)
   vx: number;
   vy: number;
   facing: "left" | "right";
@@ -26,6 +27,7 @@ const BETTA_CONTRACT_ADDRESS = process.env
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
 
+// Minimal ABI: nextTokenId, balanceOf, ownerOf, tokenURI
 const BETTA_ABI = [
   {
     type: "function",
@@ -39,23 +41,32 @@ const BETTA_ABI = [
     name: "balanceOf",
     stateMutability: "view",
     inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "balance", type: "uint256" }],
   },
   {
     type: "function",
     name: "ownerOf",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "owner", type: "address" }],
   },
   {
     type: "function",
     name: "tokenURI",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "", type: "string" }],
+    outputs: [{ name: "uri", type: "string" }],
   },
 ] as const;
+
+// Map rarity to local PNG in /public
+const RARITY_SPRITES: Record<Rarity, string> = {
+  COMMON: "/common.png",
+  UNCOMMON: "/uncommon.png",
+  RARE: "/rare.png",
+  EPIC: "/epic.png",
+  LEGENDARY: "/legendary.png",
+};
 
 function ipfsToHttp(uri: string): string {
   if (!uri) return uri;
@@ -76,7 +87,11 @@ function detectRarityFromMetadata(meta: any): Rarity {
     : undefined;
 
   const raw =
-    attributeRarity ?? meta.rarity ?? meta.Rarity ?? meta?.attributes?.Rarity ?? "";
+    attributeRarity ??
+    meta.rarity ??
+    meta.Rarity ??
+    (meta.attributes && (meta.attributes.Rarity as any)) ??
+    "";
 
   const normalized = String(raw).toUpperCase();
 
@@ -94,12 +109,12 @@ function createInitialMotion(index: number): {
   vy: number;
   facing: "left" | "right";
 } {
-  const x = 25 + ((index * 17) % 40) + Math.random() * 10;
-  const y = 30 + ((index * 11) % 30) + Math.random() * 8;
+  const x = 15 + ((index * 20) % 60) + Math.random() * 6;
+  const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
-  const baseSpeed = 0.09 + Math.random() * 0.05;
-  const vx = (Math.random() > 0.5 ? 1 : -1) * baseSpeed;
-  const vy = (Math.random() > 0.5 ? 1 : -1) * (0.04 + Math.random() * 0.03);
+  const base = 0.1 + Math.random() * 0.05;
+  const vx = (Math.random() > 0.5 ? 1 : -1) * base;
+  const vy = (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.04);
 
   return {
     x,
@@ -137,7 +152,6 @@ export default function AquariumPage() {
 
         const ctx: any = await sdk.context;
         if (cancelled) return;
-
         const ctxFid = ctx?.user?.fid as number | undefined;
         if (ctxFid) {
           setFid(ctxFid);
@@ -213,6 +227,7 @@ export default function AquariumPage() {
         }
 
         const maxTokenId = nextTokenIdValue - ONE;
+
         const HARD_CAP = BigInt(500);
         const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
@@ -244,11 +259,14 @@ export default function AquariumPage() {
             const meta = res.ok ? await res.json() : null;
 
             const rarity = detectRarityFromMetadata(meta);
+            const spriteUrl = RARITY_SPRITES[rarity];
+
             const motion = createInitialMotion(index++);
 
             fishes.push({
               tokenId: id,
               rarity,
+              imageUrl: spriteUrl,
               ...motion,
             });
           } catch (perTokenError) {
@@ -279,14 +297,14 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random swim across the tank
+  // Random movement using requestAnimationFrame
   useEffect(() => {
     let frame: number;
 
     const animate = () => {
       setFish((prev) =>
-        prev.map((f) => {
-          let { x, y, vx, vy, facing } = f;
+        prev.map((fish) => {
+          let { x, y, vx, vy, facing } = fish;
 
           x += vx;
           y += vy;
@@ -294,7 +312,7 @@ export default function AquariumPage() {
           const minX = 10;
           const maxX = 90;
           const minY = 18;
-          const maxY = 80;
+          const maxY = 82;
 
           if (x < minX) {
             x = minX;
@@ -314,7 +332,7 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          return { ...f, x, y, vx, vy, facing };
+          return { ...fish, x, y, vx, vy, facing };
         })
       );
 
@@ -376,6 +394,7 @@ export default function AquariumPage() {
           </p>
         </header>
 
+        {/* Tank with custom background image */}
         <section
           className={
             "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(56,189,248,0.6)] border border-sky-500/40" +
@@ -410,6 +429,7 @@ export default function AquariumPage() {
               </div>
             )}
 
+            {/* Fishes */}
             {!isLoading &&
               !error &&
               fish.map((f) => (
@@ -424,11 +444,17 @@ export default function AquariumPage() {
                 >
                   <div
                     className={
-                      "fish-wrapper " +
-                      (f.facing === "left" ? "fish-facing-left " : "fish-facing-right ") +
-                      rarityToClass(f.rarity)
+                      "fish-wrapper" +
+                      (f.facing === "left" ? " fish-facing-left" : " fish-facing-right")
                     }
-                  />
+                  >
+                    <img
+                      src={f.imageUrl}
+                      alt={f.rarity + " Betta #" + f.tokenId.toString()}
+                      className="fish-img"
+                      draggable={false}
+                    />
+                  </div>
                 </div>
               ))}
 
@@ -472,23 +498,21 @@ export default function AquariumPage() {
             Feed
           </button>
           <span className="text-[10px] text-slate-500">
-            Fish move in looping waves. Feeding adds a short glow.
+            Fish move randomly across the tank. Feeding adds a short glow.
           </span>
         </div>
       </div>
 
       <style jsx global>{`
-        /* Sprite-based fin+tail animation. Body stays flat. */
+        /* Transparent wrapper: only flips direction */
         .fish-wrapper {
-          width: 4.5rem;
-          height: 4.5rem;
-          background-repeat: no-repeat;
-          background-size: auto 100%; /* sprite width natural (12 * 128px) */
-          background-position-x: 0px;
-          background-position-y: 0px;
-          image-rendering: auto;
-          animation: fishSwimDepth 0.85s steps(12) infinite;
-          filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: auto;
+          height: auto;
+          background: transparent;
+          box-shadow: none;
         }
 
         .fish-facing-right {
@@ -499,34 +523,17 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        .fish-common {
-          background-image: url("/common-swim12-depth.png");
-        }
-        .fish-uncommon {
-          background-image: url("/uncommon-swim12-depth.png");
-        }
-        .fish-rare {
-          background-image: url("/rare-swim12-depth.png");
-        }
-        .fish-epic {
-          background-image: url("/epic-swim12-depth.png");
-        }
-        .fish-legendary {
-          background-image: url("/legendary-swim12-depth.png");
+        /* PURE STATIC IMAGE: NO NODDING, NO PULSE, ONLY MOVEMENT FROM JS */
+        .fish-img {
+          width: 4.5rem;
+          height: 4.5rem;
+          object-fit: contain;
+          image-rendering: auto;
+          filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
+          transform: none;
         }
 
-        /* 12 frames, each 128px. Total width = 1536px.
-           Move from 0 -> -1408 (11 langkah) dengan steps(12) agar tidak ada sela frame. */
-        @keyframes fishSwimDepth {
-          from {
-            background-position-x: 0px;
-          }
-          to {
-            background-position-x: -1408px;
-          }
-        }
-
-        .feed-mode .fish-wrapper {
+        .feed-mode .fish-img {
           filter: drop-shadow(0 0 24px rgba(250, 204, 21, 0.95));
         }
 
@@ -556,23 +563,6 @@ export default function AquariumPage() {
       `}</style>
     </div>
   );
-}
-
-function rarityToClass(rarity: Rarity): string {
-  switch (rarity) {
-    case "COMMON":
-      return "fish-common";
-    case "UNCOMMON":
-      return "fish-uncommon";
-    case "RARE":
-      return "fish-rare";
-    case "EPIC":
-      return "fish-epic";
-    case "LEGENDARY":
-      return "fish-legendary";
-    default:
-      return "fish-common";
-  }
 }
 
 type BadgeProps = {
