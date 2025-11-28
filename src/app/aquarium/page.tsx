@@ -439,12 +439,6 @@ export default function AquariumPage() {
                 alt="shadow fish"
                 draggable={false}
               />
-              <img
-                src="/shadowfish.png"
-                className="shadow-fish shadow-fish-rtl"
-                alt="shadow fish"
-                draggable={false}
-              />
             </div>
 
             {/* Bubble layer */}
@@ -627,23 +621,16 @@ export default function AquariumPage() {
 
         .shadow-fish {
           position: absolute;
-          width: 160px;
+          width: 130px; /* smaller */
           opacity: 0;
-          filter: blur(1.5px);
+          filter: blur(3px); /* more blur */
         }
 
-        /* left → right */
+        /* single path: left → right, rarely appears */
         .shadow-fish-ltr {
-          top: 38%;
-          animation: shadowSwimLeftToRight 50s linear infinite;
-          animation-delay: 10s;
-        }
-
-        /* right → left */
-        .shadow-fish-rtl {
-          top: 65%;
-          animation: shadowSwimRightToLeft 120s linear infinite;
-          animation-delay: 80s;
+          top: 50%;
+          animation: shadowSwimLeftToRight 60s linear infinite;
+          animation-delay: 12s;
         }
 
         @keyframes shadowSwimLeftToRight {
@@ -652,36 +639,16 @@ export default function AquariumPage() {
             opacity: 0;
           }
           10% {
-            opacity: 0.3;
+            opacity: 0.25;
           }
           50% {
-            opacity: 0.6;
+            opacity: 0.55;
           }
           90% {
-            opacity: 0.3;
+            opacity: 0.25;
           }
           100% {
             transform: translateX(115%) scaleX(1);
-            opacity: 0;
-          }
-        }
-
-        @keyframes shadowSwimRightToLeft {
-          0% {
-            transform: translateX(115%) scaleX(-1);
-            opacity: 0;
-          }
-          10% {
-            opacity: 0.3;
-          }
-          50% {
-            opacity: 0.6;
-          }
-          90% {
-            opacity: 0.3;
-          }
-          100% {
-            transform: translateX(-25%) scaleX(-1);
             opacity: 0;
           }
         }
