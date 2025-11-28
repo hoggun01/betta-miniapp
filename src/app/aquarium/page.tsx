@@ -435,25 +435,13 @@ export default function AquariumPage() {
             <div className="shadow-layer">
               <img
                 src="/shadow-fish.png"
-                className="shadow-fish shadow-fish-1"
+                className="shadow-fish shadow-fish-ltr"
                 alt="shadow fish"
                 draggable={false}
               />
               <img
                 src="/shadow-fish.png"
-                className="shadow-fish shadow-fish-2"
-                alt="shadow fish"
-                draggable={false}
-              />
-              <img
-                src="/shadow-fish.png"
-                className="shadow-fish shadow-fish-3"
-                alt="shadow fish"
-                draggable={false}
-              />
-              <img
-                src="/shadow-fish.png"
-                className="shadow-fish shadow-fish-4"
+                className="shadow-fish shadow-fish-rtl"
                 alt="shadow fish"
                 draggable={false}
               />
@@ -639,51 +627,61 @@ export default function AquariumPage() {
 
         .shadow-fish {
           position: absolute;
-          width: 130px;
+          width: 160px;
           opacity: 0;
-          filter: blur(2px);
-          transform: translateX(-130%);
-          animation: shadowSwim 24s linear infinite;
+          filter: blur(1.5px);
         }
 
-        .shadow-fish-1 {
-          top: 30%;
-          animation-delay: 4s;
+        /* left → right (start di kiri, selesai di kanan) */
+        .shadow-fish-ltr {
+          top: 38%;
+          animation: shadowSwimLeftToRight 10s linear infinite;
+          animation-delay: 6s;
         }
 
-        .shadow-fish-2 {
-          top: 52%;
-          animation-delay: 11s;
-          animation-direction: reverse;
+        /* right → left (start di kanan, selesai di kiri) */
+        .shadow-fish-rtl {
+          top: 65%;
+          animation: shadowSwimRightToLeft 15s linear infinite;
+          animation-delay: 24s;
         }
 
-        .shadow-fish-3 {
-          top: 40%;
-          animation-delay: 18s;
-        }
-
-        .shadow-fish-4 {
-          top: 70%;
-          animation-delay: 25s;
-          animation-direction: reverse;
-        }
-
-        @keyframes shadowSwim {
+        @keyframes shadowSwimLeftToRight {
           0% {
-            transform: translateX(-130%);
+            transform: translateX(-25%) scaleX(1);
             opacity: 0;
           }
           10% {
-            opacity: 0.35;
+            opacity: 0.3;
           }
           50% {
             opacity: 0.6;
           }
           90% {
-            opacity: 0.35;
+            opacity: 0.3;
           }
           100% {
-            transform: translateX(135%);
+            transform: translateX(115%) scaleX(1);
+            opacity: 0;
+          }
+        }
+
+        @keyframes shadowSwimRightToLeft {
+          0% {
+            transform: translateX(115%) scaleX(-1);
+            opacity: 0;
+          }
+          10% {
+            opacity: 0.3;
+          }
+          50% {
+            opacity: 0.6;
+          }
+          90% {
+            opacity: 0.3;
+          }
+          100% {
+            transform: translateX(-25%) scaleX(-1);
             opacity: 0;
           }
         }
