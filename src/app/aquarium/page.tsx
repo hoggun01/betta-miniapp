@@ -433,10 +433,30 @@ export default function AquariumPage() {
           <div className="relative w-full h-full">
             {/* Shadow fish layer (behind bubbles & main fish) */}
             <div className="shadow-layer">
-              <div className="shadow-fish shadow-fish-1" />
-              <div className="shadow-fish shadow-fish-2" />
-              <div className="shadow-fish shadow-fish-3" />
-              <div className="shadow-fish shadow-fish-4" />
+              <img
+                src="/shadow-fish.png"
+                className="shadow-fish shadow-fish-1"
+                alt="shadow fish"
+                draggable={false}
+              />
+              <img
+                src="/shadow-fish.png"
+                className="shadow-fish shadow-fish-2"
+                alt="shadow fish"
+                draggable={false}
+              />
+              <img
+                src="/shadow-fish.png"
+                className="shadow-fish shadow-fish-3"
+                alt="shadow fish"
+                draggable={false}
+              />
+              <img
+                src="/shadow-fish.png"
+                className="shadow-fish shadow-fish-4"
+                alt="shadow fish"
+                draggable={false}
+              />
             </div>
 
             {/* Bubble layer */}
@@ -608,7 +628,7 @@ export default function AquariumPage() {
           }
         }
 
-        /* SHADOW FISH (behind everything) */
+        /* SHADOW FISH PNG (behind bubbles & front fish) */
         .shadow-layer {
           position: absolute;
           inset: 0;
@@ -619,42 +639,20 @@ export default function AquariumPage() {
 
         .shadow-fish {
           position: absolute;
-          width: 60px;
-          height: 30px;
-          border-radius: 9999px;
-          background: radial-gradient(
-            circle at 30% 50%,
-            rgba(0, 0, 0, 0.38),
-            rgba(0, 0, 0, 0.85)
-          );
-          filter: blur(3px);
+          width: 130px;
           opacity: 0;
-          transform: translateX(-120%);
-          animation: shadowSwim 22s linear infinite;
-        }
-
-        .shadow-fish::after {
-          content: "";
-          position: absolute;
-          right: -18px;
-          top: 6px;
-          width: 22px;
-          height: 18px;
-          border-radius: 9999px;
-          background: radial-gradient(
-            circle at 30% 50%,
-            rgba(0, 0, 0, 0.4),
-            rgba(0, 0, 0, 0.9)
-          );
+          filter: blur(2px);
+          transform: translateX(-130%);
+          animation: shadowSwim 24s linear infinite;
         }
 
         .shadow-fish-1 {
-          top: 32%;
+          top: 30%;
           animation-delay: 4s;
         }
 
         .shadow-fish-2 {
-          top: 55%;
+          top: 52%;
           animation-delay: 11s;
           animation-direction: reverse;
         }
@@ -672,20 +670,20 @@ export default function AquariumPage() {
 
         @keyframes shadowSwim {
           0% {
-            transform: translateX(-120%);
+            transform: translateX(-130%);
             opacity: 0;
           }
           10% {
-            opacity: 0.4;
+            opacity: 0.35;
           }
           50% {
-            opacity: 0.65;
+            opacity: 0.6;
           }
           90% {
-            opacity: 0.4;
+            opacity: 0.35;
           }
           100% {
-            transform: translateX(140%);
+            transform: translateX(135%);
             opacity: 0;
           }
         }
