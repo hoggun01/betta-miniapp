@@ -434,13 +434,13 @@ export default function AquariumPage() {
             {/* Shadow fish layer (behind bubbles & main fish) */}
             <div className="shadow-layer">
               <img
-                src="/shadow-fish.png"
+                src="/shadowfish.png"
                 className="shadow-fish shadow-fish-ltr"
                 alt="shadow fish"
                 draggable={false}
               />
               <img
-                src="/shadow-fish.png"
+                src="/shadowfish.png"
                 className="shadow-fish shadow-fish-rtl"
                 alt="shadow fish"
                 draggable={false}
@@ -632,14 +632,14 @@ export default function AquariumPage() {
           filter: blur(1.5px);
         }
 
-        /* left → right (start di kiri, selesai di kanan) */
+        /* left → right */
         .shadow-fish-ltr {
           top: 38%;
           animation: shadowSwimLeftToRight 10s linear infinite;
           animation-delay: 6s;
         }
 
-        /* right → left (start di kanan, selesai di kiri) */
+        /* right → left */
         .shadow-fish-rtl {
           top: 65%;
           animation: shadowSwimRightToLeft 15s linear infinite;
