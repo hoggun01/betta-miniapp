@@ -13,11 +13,12 @@ type FishToken = {
   imageUrl: string;
 };
 
-type PositionedFish = FishToken & {
-  top: number;
-  left: number;
-  duration: number;
-  delay: number;
+type MovingFish = FishToken & {
+  x: number; // 0-100 (horizontal, % area tank)
+  y: number; // 0-100 (vertical, % area tank)
+  vx: number; // speed horizontal
+  vy: number; // speed vertical
+  facing: "left" | "right";
 };
 
 const BETTA_CONTRACT_ADDRESS = process.env
@@ -101,17 +102,28 @@ function detectRarityFromMetadata(meta: any): Rarity {
   return "COMMON";
 }
 
-function createRandomMotion(): {
-  top: number;
-  left: number;
-  duration: number;
-  delay: number;
+function createInitialMotion(index: number): {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  facing: "left" | "right";
 } {
+  // Posisi awal tersebar di dalam tank
+  const x = 15 + ((index * 20) % 60) + Math.random() * 6;
+  const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
+
+  // Kecepatan random kecil biar smooth
+  const base = 0.10 + Math.random() * 0.05;
+  const vx = (Math.random() > 0.5 ? 1 : -1) * base;
+  const vy = (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.04);
+
   return {
-    top: 10 + Math.random() * 60,
-    left: 5 + Math.random() * 70,
-    duration: 10 + Math.random() * 6, // 10–16s biar smooth
-    delay: Math.random() * 4,
+    x,
+    y,
+    vx,
+    vy,
+    facing: vx >= 0 ? "right" : "left",
   };
 }
 
@@ -119,7 +131,7 @@ export default function AquariumPage() {
   const [isInMiniApp, setIsInMiniApp] = useState<boolean | null>(null);
   const [fid, setFid] = useState<number | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [fish, setFish] = useState<PositionedFish[]>([]);
+  const [fish, setFish] = useState<MovingFish[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFeeding, setIsFeeding] = useState(false);
@@ -224,7 +236,8 @@ export default function AquariumPage() {
         const HARD_CAP = BigInt(500);
         const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
-        const fishes: PositionedFish[] = [];
+        const fishes: MovingFish[] = [];
+        let index = 0;
 
         for (let id = ONE; id <= endTokenId; id = id + ONE) {
           try {
@@ -252,7 +265,8 @@ export default function AquariumPage() {
 
             const rarity = detectRarityFromMetadata(meta);
             const spriteUrl = RARITY_SPRITES[rarity];
-            const motion = createRandomMotion();
+
+            const motion = createInitialMotion(index++);
 
             fishes.push({
               tokenId: id,
@@ -286,6 +300,53 @@ export default function AquariumPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Random movement seperti script demo (requestAnimationFrame)
+  useEffect(() => {
+    let frame: number;
+
+    const animate = () => {
+      setFish((prev) =>
+        prev.map((fish) => {
+          let { x, y, vx, vy, facing } = fish;
+
+          x += vx;
+          y += vy;
+
+          // Batas area tank (dalam % dari container)
+          const minX = 10;
+          const maxX = 90;
+          const minY = 18;
+          const maxY = 82;
+
+          if (x < minX) {
+            x = minX;
+            vx = Math.abs(vx);
+            facing = "right";
+          } else if (x > maxX) {
+            x = maxX;
+            vx = -Math.abs(vx);
+            facing = "left";
+          }
+
+          if (y < minY) {
+            y = minY;
+            vy = Math.abs(vy);
+          } else if (y > maxY) {
+            y = maxY;
+            vy = -Math.abs(vy);
+          }
+
+          return { ...fish, x, y, vx, vy, facing };
+        })
+      );
+
+      frame = window.requestAnimationFrame(animate);
+    };
+
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -376,6 +437,7 @@ export default function AquariumPage() {
               </div>
             )}
 
+            {/* Fishes */}
             {!isLoading &&
               !error &&
               fish.map((f) => (
@@ -383,18 +445,24 @@ export default function AquariumPage() {
                   key={f.tokenId.toString()}
                   className="absolute"
                   style={{
-                    top: f.top + "%", // base position
-                    left: f.left + "%", // base position
-                    animationDuration: f.duration + "s",
-                    animationDelay: f.delay + "s",
+                    left: `${f.x}%`,
+                    top: `${f.y}%`,
+                    transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <img
-                    src={f.imageUrl}
-                    alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                    className="swim w-24 h-24 object-contain drop-shadow-[0_0_24px_rgba(56,189,248,0.9)]"
-                    draggable={false}
-                  />
+                  <div
+                    className={
+                      "fish-wrapper" +
+                      (f.facing === "left" ? " fish-facing-left" : " fish-facing-right")
+                    }
+                  >
+                    <img
+                      src={f.imageUrl}
+                      alt={f.rarity + " Betta #" + f.tokenId.toString()}
+                      className="fish-img"
+                      draggable={false}
+                    />
+                  </div>
                 </div>
               ))}
 
@@ -438,48 +506,60 @@ export default function AquariumPage() {
             Feed
           </button>
           <span className="text-[10px] text-slate-500">
-            Fish move in looping waves. Feeding adds a short glow.
+            Fish move in soft loops. Feeding adds a short glow.
           </span>
         </div>
       </div>
 
       <style jsx global>{`
-        /* Big looping path: kiri -> atas -> kanan -> bawah -> balik kiri */
-        @keyframes swim {
+        /* wrapper untuk ikan (glow + arah) */
+        .fish-wrapper {
+          width: 5.5rem;
+          height: 5.5rem;
+          border-radius: 9999px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: radial-gradient(
+            circle at 30% 20%,
+            rgba(250, 250, 220, 0.2),
+            transparent 60%
+          );
+          box-shadow: 0 0 26px rgba(56, 189, 248, 0.85);
+        }
+
+        .fish-facing-right {
+          transform: scaleX(1);
+        }
+
+        .fish-facing-left {
+          transform: scaleX(-1);
+        }
+
+        /* Sirip / badan berdenyut pelan biar keliatan hidup */
+        @keyframes finWiggle {
           0% {
-            transform: translate3d(-120px, 0px, 0) scale(1) rotate(0deg);
-          }
-          20% {
-            transform: translate3d(-40px, -60px, 0) scale(1.02) rotate(-4deg);
-          }
-          40% {
-            transform: translate3d(60px, -40px, 0) scale(1.04) rotate(3deg);
+            transform: scale(1) translate3d(0, 0, 0) rotate(0deg);
           }
           50% {
-            /* balik arah, flip horizontal */
-            transform: translate3d(120px, 0px, 0) scale(1.03) rotate(0deg) scaleX(-1);
-          }
-          70% {
-            transform: translate3d(40px, 60px, 0) scale(1.01) rotate(4deg) scaleX(-1);
-          }
-          90% {
-            transform: translate3d(-60px, 40px, 0) scale(1) rotate(-3deg) scaleX(-1);
+            transform: scale(1.05) translate3d(1px, -1px, 0) rotate(2deg);
           }
           100% {
-            transform: translate3d(-120px, 0px, 0) scale(1) rotate(0deg);
+            transform: scale(0.98) translate3d(-1px, 1px, 0) rotate(-2deg);
           }
         }
 
-        .swim {
-          animation-name: swim;
-          animation-timing-function: linear;
-          animation-iteration-count: infinite;
-          animation-direction: normal;
-          transform-origin: center center;
+        .fish-img {
+          width: 4.5rem;
+          height: 4.5rem;
+          object-fit: contain;
+          image-rendering: auto;
+          filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
+          animation: finWiggle 1.1s ease-in-out infinite alternate;
         }
 
-        .feed-mode .swim {
-          filter: drop-shadow(0 0 22px rgba(250, 204, 21, 0.95));
+        .feed-mode .fish-img {
+          filter: drop-shadow(0 0 24px rgba(250, 204, 21, 0.95));
         }
 
         .pellet {
