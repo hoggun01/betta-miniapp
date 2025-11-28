@@ -14,10 +14,10 @@ type FishToken = {
 };
 
 type MovingFish = FishToken & {
-  x: number; // 0-100 (horizontal, % area tank)
-  y: number; // 0-100 (vertical, % area tank)
-  vx: number; // speed horizontal
-  vy: number; // speed vertical
+  x: number; // 0-100 (horizontal, %)
+  y: number; // 0-100 (vertical, %)
+  vx: number;
+  vy: number;
   facing: "left" | "right";
 };
 
@@ -109,11 +109,9 @@ function createInitialMotion(index: number): {
   vy: number;
   facing: "left" | "right";
 } {
-  // Initial position spread inside the tank
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
-  // Small random velocity for smooth movement
   const base = 0.1 + Math.random() * 0.05;
   const vx = (Math.random() > 0.5 ? 1 : -1) * base;
   const vy = (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.04);
@@ -198,7 +196,6 @@ export default function AquariumPage() {
 
         const ZERO = BigInt(0);
 
-        // Quick check: if balanceOf == 0 -> aquarium empty
         const balance = (await client.readContract({
           address: BETTA_CONTRACT_ADDRESS,
           abi: BETTA_ABI,
@@ -213,7 +210,6 @@ export default function AquariumPage() {
           return;
         }
 
-        // Get total minted via nextTokenId (public)
         const nextTokenIdValue = (await client.readContract({
           address: BETTA_CONTRACT_ADDRESS,
           abi: BETTA_ABI,
@@ -232,7 +228,6 @@ export default function AquariumPage() {
 
         const maxTokenId = nextTokenIdValue - ONE;
 
-        // For safety, cap how many tokens we scan (e.g. first 500)
         const HARD_CAP = BigInt(500);
         const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
@@ -302,7 +297,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement (requestAnimationFrame)
+  // Random movement using requestAnimationFrame
   useEffect(() => {
     let frame: number;
 
@@ -314,7 +309,6 @@ export default function AquariumPage() {
           x += vx;
           y += vy;
 
-          // Tank bounds (percent from container)
           const minX = 10;
           const maxX = 90;
           const minY = 18;
@@ -400,38 +394,36 @@ export default function AquariumPage() {
           </p>
         </header>
 
+        {/* Tank with custom background image */}
         <section
           className={
-            "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl border border-sky-500/40 bg-gradient-to-b from-slate-900/90 via-slate-950/90 to-slate-900/90 overflow-hidden shadow-[0_0_40px_rgba(56,189,248,0.6)]" +
+            "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(56,189,248,0.6)] border border-sky-500/40" +
             (isFeeding ? " feed-mode" : "")
           }
+          style={{
+            backgroundImage: 'url("/aquarium.png")',
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
         >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(14,165,233,0.2),transparent_55%)]" />
-
-          <div className="pointer-events-none absolute inset-0 opacity-40 mix-blend-screen">
-            <div className="absolute -left-10 bottom-0 w-32 h-32 rounded-full border border-sky-500/20" />
-            <div className="absolute left-8 top-8 w-20 h-20 rounded-full border border-cyan-400/20" />
-            <div className="absolute right-4 bottom-16 w-14 h-14 rounded-full border border-sky-300/30" />
-          </div>
-
           <div className="relative w-full h-full">
             {isLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-sky-100">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-sky-100 bg-slate-900/40">
                 <div className="h-10 w-10 rounded-full border-2 border-sky-400/60 border-t-transparent animate-spin" />
                 <span>Loading your fish...</span>
               </div>
             )}
 
             {!isLoading && error && (
-              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-red-200">
+              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-red-200 bg-slate-900/40">
                 {error}
               </div>
             )}
 
             {!isLoading && !error && !fish.length && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center text-sm text-slate-200">
+              <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center text-sm text-slate-50 bg-slate-900/40">
                 <p>Your aquarium is empty for now.</p>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-slate-200">
                   Hatch or buy a Betta NFT to see it swim here.
                 </p>
               </div>
@@ -478,10 +470,10 @@ export default function AquariumPage() {
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-2 text-[10px] text-slate-200">
               <div className="flex items-center justify-between gap-2">
-                <span className="uppercase tracking-[0.16em] text-slate-400">
+                <span className="uppercase tracking-[0.16em] text-slate-200 drop-shadow">
                   Rarity
                 </span>
-                <span className="text-slate-400">
+                <span className="text-slate-200 drop-shadow">
                   {fish.length} fish total
                 </span>
               </div>
@@ -506,13 +498,13 @@ export default function AquariumPage() {
             Feed
           </button>
           <span className="text-[10px] text-slate-500">
-            Fish move in soft loops. Feeding adds a short glow.
+            Fish move in looping waves. Feeding adds a short glow.
           </span>
         </div>
       </div>
 
       <style jsx global>{`
-        /* Transparent wrapper just for flipping direction */
+        /* Transparent wrapper: only for flipping direction */
         .fish-wrapper {
           display: flex;
           align-items: center;
@@ -531,16 +523,22 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* Fin / body wiggle so fish looks alive */
-        @keyframes finWiggle {
+        /* Tail/fin swim: rotate around tail, not just pulse */
+        @keyframes finSwim {
           0% {
-            transform: scale(1) translate3d(0, 0, 0) rotate(0deg);
+            transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+          }
+          25% {
+            transform: translate3d(1px, -1px, 0) rotate(6deg) scale(1.02);
           }
           50% {
-            transform: scale(1.05) translate3d(1px, -1px, 0) rotate(2deg);
+            transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+          }
+          75% {
+            transform: translate3d(-1px, 1px, 0) rotate(-6deg) scale(1.02);
           }
           100% {
-            transform: scale(0.98) translate3d(-1px, 1px, 0) rotate(-2deg);
+            transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
           }
         }
 
@@ -550,7 +548,8 @@ export default function AquariumPage() {
           object-fit: contain;
           image-rendering: auto;
           filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
-          animation: finWiggle 1.1s ease-in-out infinite alternate;
+          transform-origin: 20% 50%; /* near tail to fake fin movement */
+          animation: finSwim 0.7s ease-in-out infinite;
         }
 
         .feed-mode .fish-img {
