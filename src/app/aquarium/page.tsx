@@ -76,11 +76,7 @@ function detectRarityFromMetadata(meta: any): Rarity {
     : undefined;
 
   const raw =
-    attributeRarity ??
-    meta.rarity ??
-    meta.Rarity ??
-    (meta.attributes && (meta.attributes.Rarity as any)) ??
-    "";
+    attributeRarity ?? meta.rarity ?? meta.Rarity ?? meta?.attributes?.Rarity ?? "";
 
   const normalized = String(raw).toUpperCase();
 
@@ -98,11 +94,11 @@ function createInitialMotion(index: number): {
   vy: number;
   facing: "left" | "right";
 } {
-  const x = 15 + ((index * 20) % 60) + Math.random() * 6;
-  const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
+  const x = 25 + ((index * 17) % 40) + Math.random() * 10;
+  const y = 30 + ((index * 11) % 30) + Math.random() * 8;
 
-  const base = 0.09 + Math.random() * 0.05;
-  const vx = (Math.random() > 0.5 ? 1 : -1) * base;
+  const baseSpeed = 0.09 + Math.random() * 0.05;
+  const vx = (Math.random() > 0.5 ? 1 : -1) * baseSpeed;
   const vy = (Math.random() > 0.5 ? 1 : -1) * (0.04 + Math.random() * 0.03);
 
   return {
@@ -141,6 +137,7 @@ export default function AquariumPage() {
 
         const ctx: any = await sdk.context;
         if (cancelled) return;
+
         const ctxFid = ctx?.user?.fid as number | undefined;
         if (ctxFid) {
           setFid(ctxFid);
@@ -282,14 +279,14 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random swim (horizontal/vertical) – tubuh tetap flat, cuma posisi yang berubah
+  // Random swim across the tank
   useEffect(() => {
     let frame: number;
 
     const animate = () => {
       setFish((prev) =>
-        prev.map((fish) => {
-          let { x, y, vx, vy, facing } = fish;
+        prev.map((f) => {
+          let { x, y, vx, vy, facing } = f;
 
           x += vx;
           y += vy;
@@ -317,7 +314,7 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          return { ...fish, x, y, vx, vy, facing };
+          return { ...f, x, y, vx, vy, facing };
         })
       );
 
@@ -481,13 +478,14 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
-        /* Tubuh tetap flat, hanya sprite frame yang berubah (sirip + ekor) */
+        /* Sprite-based fin+tail animation. Body stays flat. */
         .fish-wrapper {
           width: 4.5rem;
           height: 4.5rem;
           background-repeat: no-repeat;
-          background-size: 1200% 100%; /* 12 frame horizontal */
-          background-position: 0% 0;
+          background-size: auto 100%; /* sprite width natural (12 * 128px) */
+          background-position-x: 0px;
+          background-position-y: 0px;
           image-rendering: auto;
           animation: fishSwimDepth 0.85s steps(12) infinite;
           filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
@@ -501,7 +499,6 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* Mapping rarity -> sprite depth */
         .fish-common {
           background-image: url("/common-swim12-depth.png");
         }
@@ -518,13 +515,14 @@ export default function AquariumPage() {
           background-image: url("/legendary-swim12-depth.png");
         }
 
-        /* Geser frame 1 -> 12, efek sirip+ekor masuk-keluar */
+        /* 12 frames, each 128px. Total width = 1536px.
+           Move from 0 -> -1408 (11 langkah) dengan steps(12) agar tidak ada sela frame. */
         @keyframes fishSwimDepth {
           from {
-            background-position: 0% 0;
+            background-position-x: 0px;
           }
           to {
-            background-position: 100% 0;
+            background-position-x: -1408px;
           }
         }
 
