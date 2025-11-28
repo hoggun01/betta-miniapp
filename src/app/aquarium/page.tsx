@@ -101,9 +101,9 @@ function createInitialMotion(index: number): {
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
-  const base = 0.1 + Math.random() * 0.05;
+  const base = 0.09 + Math.random() * 0.05;
   const vx = (Math.random() > 0.5 ? 1 : -1) * base;
-  const vy = (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.04);
+  const vy = (Math.random() > 0.5 ? 1 : -1) * (0.04 + Math.random() * 0.03);
 
   return {
     x,
@@ -216,7 +216,6 @@ export default function AquariumPage() {
         }
 
         const maxTokenId = nextTokenIdValue - ONE;
-
         const HARD_CAP = BigInt(500);
         const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
@@ -283,6 +282,7 @@ export default function AquariumPage() {
     };
   }, []);
 
+  // Random swim (horizontal/vertical) – tubuh tetap flat, cuma posisi yang berubah
   useEffect(() => {
     let frame: number;
 
@@ -297,7 +297,7 @@ export default function AquariumPage() {
           const minX = 10;
           const maxX = 90;
           const minY = 18;
-          const maxY = 82;
+          const maxY = 80;
 
           if (x < minX) {
             x = minX;
@@ -481,14 +481,15 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
+        /* Tubuh tetap flat, hanya sprite frame yang berubah (sirip + ekor) */
         .fish-wrapper {
           width: 4.5rem;
           height: 4.5rem;
           background-repeat: no-repeat;
-          background-size: 800% 100%; /* 8 frames horizontal */
+          background-size: 1200% 100%; /* 12 frame horizontal */
           background-position: 0% 0;
           image-rendering: auto;
-          animation: fishSwimFrames 0.6s steps(8) infinite;
+          animation: fishSwimDepth 0.85s steps(12) infinite;
           filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
         }
 
@@ -500,23 +501,25 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
+        /* Mapping rarity -> sprite depth */
         .fish-common {
-          background-image: url("/common-swim8.png");
+          background-image: url("/common-swim12-depth.png");
         }
         .fish-uncommon {
-          background-image: url("/uncommon-swim8.png");
+          background-image: url("/uncommon-swim12-depth.png");
         }
         .fish-rare {
-          background-image: url("/rare-swim8.png");
+          background-image: url("/rare-swim12-depth.png");
         }
         .fish-epic {
-          background-image: url("/epic-swim8.png");
+          background-image: url("/epic-swim12-depth.png");
         }
         .fish-legendary {
-          background-image: url("/legendary-swim8.png");
+          background-image: url("/legendary-swim12-depth.png");
         }
 
-        @keyframes fishSwimFrames {
+        /* Geser frame 1 -> 12, efek sirip+ekor masuk-keluar */
+        @keyframes fishSwimDepth {
           from {
             background-position: 0% 0;
           }
