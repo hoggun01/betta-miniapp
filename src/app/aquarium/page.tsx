@@ -16,7 +16,8 @@ type FishToken = {
 type TrailPoint = {
   x: number; // 0-100 (%)
   y: number; // 0-100 (%)
-  life: number; // 0-1, used as opacity
+  life: number; // 0-1, controls opacity
+  facing: "left" | "right";
 };
 
 type MovingFish = FishToken & {
@@ -313,7 +314,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement using requestAnimationFrame with aura trail
+  // Random movement with ghost trail
   useEffect(() => {
     let frame: number;
 
@@ -371,11 +372,11 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          const MAX_TRAIL_POINTS = 6;
-          const DECAY = 0.16;
+          const MAX_TRAIL_POINTS = 8;
+          const DECAY = 0.18;
 
           const newTrail: TrailPoint[] = [
-            { x: fish.x, y: fish.y, life: 1 },
+            { x: fish.x, y: fish.y, life: 1, facing: fish.facing },
             ...fish.trail
               .map((p) => ({ ...p, life: p.life - DECAY }))
               .filter((p) => p.life > 0.05),
@@ -517,12 +518,12 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* Trails: global positions, soft colored shadows */}
+            {/* MOTION TRAIL: ghost fish following the path */}
             {!isLoading &&
               !error &&
               fish.map((f) =>
                 f.trail.map((p, idx) => {
-                  const trailClass =
+                  const rarityTrailClass =
                     f.rarity === "COMMON"
                       ? "trail-common"
                       : f.rarity === "UNCOMMON"
@@ -534,22 +535,27 @@ export default function AquariumPage() {
                       : "trail-legendary";
 
                   return (
-                    <div
-                      key={`${f.tokenId.toString()}-trail-${idx}`}
-                      className={`absolute pointer-events-none trail-dot ${trailClass}`}
+                    <img
+                      key={`${f.tokenId.toString()}-ghost-${idx}`}
+                      src={f.imageUrl}
+                      className={`fish-trail-img ${rarityTrailClass} ${
+                        p.facing === "left"
+                          ? "fish-trail-facing-left"
+                          : "fish-trail-facing-right"
+                      }`}
                       style={{
                         left: `${p.x}%`,
                         top: `${p.y}%`,
-                        transform: "translate(-50%, -50%)",
-                        opacity: 0.5 * p.life,
-                        zIndex: 1,
+                        opacity: 0.55 * p.life,
                       }}
+                      alt=""
+                      draggable={false}
                     />
                   );
                 })
               )}
 
-            {/* Fish icons with thick outline per rarity */}
+            {/* Main fish with thick outline per rarity */}
             {!isLoading &&
               !error &&
               fish.map((f) => {
@@ -572,7 +578,7 @@ export default function AquariumPage() {
                       left: `${f.x}%`,
                       top: `${f.y}%`,
                       transform: "translate(-50%, -50%)",
-                      zIndex: 2,
+                      zIndex: 3,
                     }}
                   >
                     <div
@@ -682,11 +688,10 @@ export default function AquariumPage() {
           height: 4.5rem;
           object-fit: contain;
           image-rendering: auto;
-          filter: none;
           transform: none;
         }
 
-        /* OUTLINE PER RARITY (outer line following fish shape) */
+        /* Outer line following fish shape (rarity colors) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 3px rgba(148, 163, 184, 1))
@@ -725,70 +730,56 @@ export default function AquariumPage() {
             drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
         }
 
-        /* TRAIL DOTS — colored aura left behind the fish */
-        .trail-dot {
-          width: 4.4rem;
-          height: 4.4rem;
-          border-radius: 9999px;
-          filter: blur(18px);
+        /* Ghost motion trail (uses same fish PNG) */
+        .fish-trail-img {
+          position: absolute;
+          width: 4.2rem;
+          height: 4.2rem;
+          object-fit: contain;
+          transform: translate(-50%, -50%);
           pointer-events: none;
-          transition: opacity 0.15s linear;
+          z-index: 2;
+          filter: blur(4px);
+          mix-blend-mode: screen;
+        }
+
+        .fish-trail-facing-right {
+          transform: translate(-50%, -50%) scaleX(1);
+        }
+
+        .fish-trail-facing-left {
+          transform: translate(-50%, -50%) scaleX(-1);
         }
 
         .trail-common {
-          background: radial-gradient(
-            circle,
-            rgba(148, 163, 184, 0.6) 0%,
-            rgba(15, 23, 42, 0) 72%
-          );
+          filter: blur(5px)
+            drop-shadow(0 0 10px rgba(148, 163, 184, 0.8));
         }
 
         .trail-uncommon {
-          background: radial-gradient(
-            circle,
-            rgba(52, 211, 153, 0.7) 0%,
-            rgba(15, 23, 42, 0) 74%
-          );
+          filter: blur(5px)
+            drop-shadow(0 0 12px rgba(52, 211, 153, 0.9));
         }
 
         .trail-rare {
-          background: radial-gradient(
-            circle,
-            rgba(168, 85, 247, 0.75) 0%,
-            rgba(15, 23, 42, 0) 75%
-          );
+          filter: blur(6px)
+            drop-shadow(0 0 13px rgba(168, 85, 247, 0.95));
         }
 
         .trail-epic {
-          background: radial-gradient(
-            circle,
-            rgba(239, 68, 68, 0.8) 0%,
-            rgba(15, 23, 42, 0) 76%
-          );
+          filter: blur(6px)
+            drop-shadow(0 0 14px rgba(239, 68, 68, 0.95));
         }
 
         .trail-legendary {
-          background:
-            radial-gradient(
-              circle,
-              rgba(255, 255, 255, 0.8) 0%,
-              rgba(15, 23, 42, 0.08) 35%,
-              rgba(15, 23, 42, 0) 70%
-            ),
-            conic-gradient(
-              from 0deg,
-              rgba(236, 72, 153, 0.9),
-              rgba(249, 115, 22, 0.9),
-              rgba(250, 204, 21, 0.9),
-              rgba(34, 197, 94, 0.9),
-              rgba(59, 130, 246, 0.9),
-              rgba(168, 85, 247, 0.9),
-              rgba(236, 72, 153, 0.9)
-            );
+          filter: blur(7px)
+            drop-shadow(0 0 16px rgba(236, 72, 153, 0.95))
+            drop-shadow(0 0 18px rgba(250, 204, 21, 0.95));
         }
 
-        .feed-mode .trail-dot {
-          filter: blur(22px);
+        .feed-mode .fish-trail-img {
+          filter: blur(7px)
+            drop-shadow(0 0 18px rgba(250, 204, 21, 0.98));
         }
 
         .pellet {
