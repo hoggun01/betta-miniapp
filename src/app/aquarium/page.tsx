@@ -15,7 +15,37 @@ type Fish = {
   vx: number;
   vy: number;
   facing: "left" | "right";
+  wavePhase: number;
+  waveSpeed: number;
 };
+
+const RARITY_IMAGE: Record<Rarity, string> = {
+  COMMON: "/common.png",
+  UNCOMMON: "/uncommon.png",
+  RARE: "/rare.png",
+  EPIC: "/epic.png",
+  LEGENDARY: "/legendary.png",
+};
+
+const RARITY_SCALE: Record<Rarity, number> = {
+  COMMON: 0.9,
+  UNCOMMON: 1.0,
+  RARE: 1.05,
+  EPIC: 1.1,
+  LEGENDARY: 1.18,
+};
+
+const RARITY_NAMES: Rarity[] = [
+  "COMMON",
+  "UNCOMMON",
+  "RARE",
+  "EPIC",
+  "LEGENDARY",
+];
+
+function isRarity(value: any): value is Rarity {
+  return RARITY_NAMES.includes(value);
+}
 
 export default function AquariumPage() {
   const [fid, setFid] = useState<number | null>(null);
@@ -51,78 +81,84 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Initialize fishes (one per rarity, using /public PNGs)
+  // Fetch fish rarities for this wallet from API
   useEffect(() => {
-    setFishList([
-      {
-        id: "fish-common",
-        imageUrl: "/common.png",
-        rarity: "COMMON",
-        x: 35,
-        y: 45,
-        vx: 0.10,
-        vy: 0.06,
-        facing: "right",
-      },
-      {
-        id: "fish-uncommon",
-        imageUrl: "/uncommon.png",
-        rarity: "UNCOMMON",
-        x: 70,
-        y: 35,
-        vx: -0.09,
-        vy: 0.05,
-        facing: "left",
-      },
-      {
-        id: "fish-rare",
-        imageUrl: "/rare.png",
-        rarity: "RARE",
-        x: 55,
-        y: 65,
-        vx: 0.07,
-        vy: -0.06,
-        facing: "right",
-      },
-      {
-        id: "fish-epic",
-        imageUrl: "/epic.png",
-        rarity: "EPIC",
-        x: 25,
-        y: 30,
-        vx: 0.08,
-        vy: 0.07,
-        facing: "right",
-      },
-      {
-        id: "fish-legendary",
-        imageUrl: "/legendary.png",
-        rarity: "LEGENDARY",
-        x: 80,
-        y: 60,
-        vx: -0.11,
-        vy: -0.05,
-        facing: "left",
-      },
-    ]);
-  }, []);
+    if (!walletAddress) {
+      setFishList([]);
+      return;
+    }
 
-  // Swimming animation
+    const controller = new AbortController();
+
+    const loadFishFromApi = async () => {
+      try {
+        const res = await fetch(
+          `/api/aquarium?address=${walletAddress}`,
+          { signal: controller.signal }
+        );
+
+        if (!res.ok) {
+          console.error("Aquarium API error:", res.status);
+          return;
+        }
+
+        const data = await res.json();
+        const rawRarities = (data?.rarities ?? []) as any[];
+
+        const rarities: Rarity[] = rawRarities.filter(isRarity);
+        if (!rarities.length) {
+          setFishList([]);
+          return;
+        }
+
+        const fishes: Fish[] = rarities.map((rarity, index) => {
+          const baseX = 20 + ((index * 18) % 60) + Math.random() * 5;
+          const baseY = 35 + ((index * 10) % 20) + (Math.random() * 6 - 3);
+          const direction = index % 2 === 0 ? 1 : -1;
+          const baseSpeed = 0.07 + (index % 3) * 0.02;
+
+          return {
+            id: `fish-${index}-${rarity.toLowerCase()}`,
+            imageUrl: RARITY_IMAGE[rarity],
+            rarity,
+            x: baseX,
+            y: baseY,
+            vx: baseSpeed * direction,
+            vy: 0.04 * (direction > 0 ? 1 : -1),
+            facing: direction > 0 ? "right" : "left",
+            wavePhase: Math.random() * Math.PI * 2,
+            waveSpeed: 0.05 + Math.random() * 0.03,
+          };
+        });
+
+        setFishList(fishes);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.error("Failed to load aquarium data:", error);
+      }
+    };
+
+    loadFishFromApi();
+    return () => controller.abort();
+  }, [walletAddress]);
+
+  // Swimming animation (bounce + wave + slight rotation)
   useEffect(() => {
     let frame: number;
 
     const animate = () => {
       setFishList((prev) =>
         prev.map((fish) => {
-          let { x, y, vx, vy, facing } = fish;
+          let { x, y, vx, vy, facing, wavePhase, waveSpeed } = fish;
 
           x += vx;
           y += vy;
+          wavePhase += waveSpeed;
 
-          const minX = 5;
-          const maxX = 95;
-          const minY = 10;
-          const maxY = 90;
+          const minX = 8;
+          const maxX = 92;
+          const minY = 18;
+          const maxY = 88;
 
           if (x < minX) {
             x = minX;
@@ -142,7 +178,15 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          return { ...fish, x, y, vx, vy, facing };
+          return {
+            ...fish,
+            x,
+            y,
+            vx,
+            vy,
+            facing,
+            wavePhase,
+          };
         })
       );
 
@@ -156,11 +200,11 @@ export default function AquariumPage() {
   const handleFeed = () => {
     setFeedCount((c) => c + 1);
     setIsFeeding(true);
-    setTimeout(() => setIsFeeding(false), 400);
+    setTimeout(() => setIsFeeding(false), 450);
   };
 
   const formatAddress = (addr: string | null) => {
-    if (!addr) return "-";
+    if (!addr) return "NO WALLET";
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
@@ -174,9 +218,7 @@ export default function AquariumPage() {
           </h1>
           <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70 flex items-center justify-center gap-3">
             <span>FID {fid ?? "–"}</span>
-            <span className="opacity-70">
-              {walletAddress ? formatAddress(walletAddress) : "No wallet"}
-            </span>
+            <span className="opacity-70">{formatAddress(walletAddress)}</span>
           </div>
         </div>
 
@@ -185,28 +227,39 @@ export default function AquariumPage() {
           <div
             className={`relative w-full h-[420px] rounded-[28px] border border-cyan-300/30 bg-gradient-to-b from-[#051626] via-[#020717] to-[#00010a] overflow-hidden transition-shadow ${
               isFeeding
-                ? "shadow-[0_0_50px_rgba(56,189,248,0.85)]"
+                ? "shadow-[0_0_60px_rgba(56,189,248,0.9)]"
                 : "shadow-[0_0_40px_rgba(15,23,42,0.9)]"
             }`}
           >
+            {/* Decorative circles */}
+            <div className="pointer-events-none absolute -left-14 top-20 w-32 h-32 rounded-full border border-cyan-500/15" />
+            <div className="pointer-events-none absolute -right-16 bottom-14 w-36 h-36 rounded-full border border-cyan-500/15" />
+
             {/* Fish layer */}
             <div className="absolute inset-0">
-              {fishList.map((fish) => (
-                <div
-                  key={fish.id}
-                  className="absolute transition-transform"
-                  style={{
-                    left: `${fish.x}%`,
-                    top: `${fish.y}%`,
-                    transform: "translate(-50%, -50%)",
-                  }}
-                >
-                  <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-[24px] bg-gradient-to-b from-sky-500/15 via-sky-400/10 to-sky-900/5 flex items-center justify-center shadow-[0_0_30px_rgba(56,189,248,0.55)]">
-                    <div
-                      className={`relative w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_0_25px_rgba(250,250,210,0.85)] ${
-                        fish.facing === "left" ? "scale-x-[-1]" : ""
-                      }`}
-                    >
+              {fishList.map((fish) => {
+                const visualY =
+                  fish.y + Math.sin(fish.wavePhase) * 2; // small up/down wave
+                const angle =
+                  Math.sin(fish.wavePhase * 1.6) * 5; // small body rotation
+                const baseScale = RARITY_SCALE[fish.rarity];
+                const scaleX =
+                  (fish.facing === "left" ? -1 : 1) * baseScale;
+                const scaleY = baseScale;
+
+                const transform = `translate(-50%, -50%) rotate(${angle}deg) scale(${scaleX}, ${scaleY})`;
+
+                return (
+                  <div
+                    key={fish.id}
+                    className="absolute"
+                    style={{
+                      left: `${fish.x}%`,
+                      top: `${visualY}%`,
+                      transform,
+                    }}
+                  >
+                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_0_26px_rgba(59,130,246,0.9)]">
                       <Image
                         src={fish.imageUrl}
                         alt={fish.rarity}
@@ -216,12 +269,12 @@ export default function AquariumPage() {
                       />
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Bottom info */}
-            <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent backdrop-blur-[14px]">
+            <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-4 bg-gradient-to-t from-black/85 via-black/45 to-transparent backdrop-blur-[14px]">
               <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-sky-200/70 mb-2">
                 <span>Rarity</span>
                 <span>{fishList.length} Fish Total</span>
@@ -229,19 +282,24 @@ export default function AquariumPage() {
 
               <div className="flex flex-wrap gap-2 text-[10px]">
                 <span className="px-3 py-1 rounded-full bg-sky-900/60 border border-sky-400/70 text-sky-50">
-                  ● Common {fishList.filter((f) => f.rarity === "COMMON").length}
+                  ● Common{" "}
+                  {fishList.filter((f) => f.rarity === "COMMON").length}
                 </span>
                 <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
-                  ● Uncommon {fishList.filter((f) => f.rarity === "UNCOMMON").length}
+                  ● Uncommon{" "}
+                  {fishList.filter((f) => f.rarity === "UNCOMMON").length}
                 </span>
                 <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
-                  ● Rare {fishList.filter((f) => f.rarity === "RARE").length}
+                  ● Rare{" "}
+                  {fishList.filter((f) => f.rarity === "RARE").length}
                 </span>
                 <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
-                  ● Epic {fishList.filter((f) => f.rarity === "EPIC").length}
+                  ● Epic{" "}
+                  {fishList.filter((f) => f.rarity === "EPIC").length}
                 </span>
                 <span className="px-3 py-1 rounded-full bg-sky-900/40 border border-sky-300/40 text-sky-100/80">
-                  ● Legendary {fishList.filter((f) => f.rarity === "LEGENDARY").length}
+                  ● Legendary{" "}
+                  {fishList.filter((f) => f.rarity === "LEGENDARY").length}
                 </span>
               </div>
             </div>
@@ -258,7 +316,7 @@ export default function AquariumPage() {
           </button>
 
           <p className="mt-3 text-[10px] text-center text-sky-100/70 tracking-[0.16em] uppercase">
-            Fish move in soft loops. Feeding adds a short glow.
+            Fish move in looping waves. Feeding adds a short glow.
           </p>
         </div>
       </div>
