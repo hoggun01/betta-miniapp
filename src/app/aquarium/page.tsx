@@ -510,9 +510,10 @@ export default function AquariumPage() {
             {isFeeding && (
               <>
                 <div className="pellet" style={{ left: "30%", top: "6%" }} />
-                <div className="pellet" style={{ left: "50%", top: "4%" }} />
-                <div className="pellet" style={{ left: "65%", top: "7%" }} />
-                <div className="pellet" style={{ left: "40%", top: "3%" }} />
+                <div className="pellet" style={{ left: "42%", top: "4%" }} />
+                <div className="pellet" style={{ left: "54%", top: "5%" }} />
+                <div className="pellet" style={{ left: "66%", top: "7%" }} />
+                <div className="pellet" style={{ left: "48%", top: "3%" }} />
               </>
             )}
 
@@ -588,12 +589,14 @@ export default function AquariumPage() {
 
         .pellet {
           position: absolute;
-          width: 6px;
-          height: 6px;
+          width: 10px;
+          height: 10px;
           border-radius: 9999px;
           background: #facc15;
+          box-shadow: 0 0 10px rgba(250, 204, 21, 0.9);
+          border: 1px solid rgba(250, 250, 210, 0.8);
           opacity: 0;
-          animation: pelletDrop 1.2s ease-out forwards;
+          animation: pelletDrop 1.6s ease-out forwards;
         }
 
         @keyframes pelletDrop {
@@ -601,11 +604,14 @@ export default function AquariumPage() {
             transform: translateY(-10px);
             opacity: 0;
           }
-          30% {
+          20% {
+            opacity: 1;
+          }
+          80% {
             opacity: 1;
           }
           100% {
-            transform: translateY(40px);
+            transform: translateY(130px);
             opacity: 0;
           }
         }
@@ -621,9 +627,9 @@ export default function AquariumPage() {
 
         .shadow-fish {
           position: absolute;
-          width: 130px; /* smaller */
+          width: 130px;
           opacity: 0;
-          filter: blur(3px); /* more blur */
+          filter: blur(3px);
         }
 
         /* single path: left → right, rarely appears */
@@ -763,9 +769,23 @@ type BadgeProps = {
 };
 
 function Badge({ label, value }: BadgeProps) {
+  // dot color per rarity
+  let dotColorClass = "bg-slate-400"; // default gray
+
+  const lower = label.toLowerCase();
+  if (lower === "uncommon") {
+    dotColorClass = "bg-emerald-400"; // green
+  } else if (lower === "rare") {
+    dotColorClass = "bg-sky-400"; // blue
+  } else if (lower === "epic") {
+    dotColorClass = "bg-amber-400"; // orange/gold
+  } else if (lower === "legendary") {
+    dotColorClass = "bg-red-500"; // bright red
+  }
+
   return (
     <div className="inline-flex items-center gap-1 rounded-full bg-slate-900/70 px-2.5 py-1 border border-slate-700/70">
-      <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColorClass}`} />
       <span className="uppercase tracking-[0.18em] text-[9px] text-slate-300">
         {label}
       </span>
