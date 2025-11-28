@@ -16,8 +16,7 @@ type FishToken = {
 type TrailPoint = {
   x: number; // 0-100 (%)
   y: number; // 0-100 (%)
-  life: number; // 0-1, controls opacity
-  facing: "left" | "right";
+  life: number; // 0-1 (dipakai untuk opacity & scale)
 };
 
 type MovingFish = FishToken & {
@@ -314,7 +313,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement with ghost trail
+  // Random movement + aura tail trail
   useEffect(() => {
     let frame: number;
 
@@ -323,6 +322,7 @@ export default function AquariumPage() {
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
+          // wander kecil
           const wanderStrengthX = 0.01;
           const wanderStrengthY = 0.008;
 
@@ -372,11 +372,25 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          const MAX_TRAIL_POINTS = 8;
-          const DECAY = 0.18;
+          // --- MOTION TRAIL (AURA EKOR) ---
+          const MAX_TRAIL_POINTS = 16;
+          const DECAY = 0.07;
+
+          // semakin besar offsetMultiplier → ekor lebih panjang di belakang
+          const offsetMultiplier = 30;
+
+          const trailHeadX = x - vx * offsetMultiplier;
+          const trailHeadY = y - vy * offsetMultiplier;
+
+          const clampedTrailHeadX = Math.min(Math.max(trailHeadX, minX), maxX);
+          const clampedTrailHeadY = Math.min(Math.max(trailHeadY, minY), maxY);
 
           const newTrail: TrailPoint[] = [
-            { x: fish.x, y: fish.y, life: 1, facing: fish.facing },
+            {
+              x: clampedTrailHeadX,
+              y: clampedTrailHeadY,
+              life: 1,
+            },
             ...fish.trail
               .map((p) => ({ ...p, life: p.life - DECAY }))
               .filter((p) => p.life > 0.05),
@@ -518,7 +532,7 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* MOTION TRAIL: ghost fish following the path */}
+            {/* AURA TAIL TRAIL: deretan blur bulat di jalur belakang ikan */}
             {!isLoading &&
               !error &&
               fish.map((f) =>
@@ -534,28 +548,24 @@ export default function AquariumPage() {
                       ? "trail-epic"
                       : "trail-legendary";
 
+                  const scale = 0.4 + 0.6 * p.life;
+
                   return (
-                    <img
-                      key={`${f.tokenId.toString()}-ghost-${idx}`}
-                      src={f.imageUrl}
-                      className={`fish-trail-img ${rarityTrailClass} ${
-                        p.facing === "left"
-                          ? "fish-trail-facing-left"
-                          : "fish-trail-facing-right"
-                      }`}
+                    <div
+                      key={`${f.tokenId.toString()}-trail-${idx}`}
+                      className={`trail-dot ${rarityTrailClass}`}
                       style={{
                         left: `${p.x}%`,
                         top: `${p.y}%`,
-                        opacity: 0.55 * p.life,
+                        opacity: 0.6 * p.life,
+                        transform: `translate(-50%, -50%) scale(${scale})`,
                       }}
-                      alt=""
-                      draggable={false}
                     />
                   );
                 })
               )}
 
-            {/* Main fish with thick outline per rarity */}
+            {/* IKAN UTAMA */}
             {!isLoading &&
               !error &&
               fish.map((f) => {
@@ -691,7 +701,7 @@ export default function AquariumPage() {
           transform: none;
         }
 
-        /* Outer line following fish shape (rarity colors) */
+        /* OUTER LINE SESUAI RARITY (outline ngikut bentuk ikan) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 3px rgba(148, 163, 184, 1))
@@ -730,56 +740,67 @@ export default function AquariumPage() {
             drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
         }
 
-        /* Ghost motion trail (uses same fish PNG) */
-        .fish-trail-img {
+        /* AURA TRAIL DOTS (ekor) */
+        .trail-dot {
           position: absolute;
-          width: 4.2rem;
-          height: 4.2rem;
-          object-fit: contain;
-          transform: translate(-50%, -50%);
+          width: 3.4rem;
+          height: 3.4rem;
+          border-radius: 9999px;
           pointer-events: none;
           z-index: 2;
-          filter: blur(4px);
-          mix-blend-mode: screen;
+          filter: blur(10px);
         }
 
-        .fish-trail-facing-right {
-          transform: translate(-50%, -50%) scaleX(1);
-        }
-
-        .fish-trail-facing-left {
-          transform: translate(-50%, -50%) scaleX(-1);
-        }
-
+        /* warna tail per rarity */
         .trail-common {
-          filter: blur(5px)
-            drop-shadow(0 0 10px rgba(148, 163, 184, 0.8));
+          background: radial-gradient(
+            circle,
+            rgba(148, 163, 184, 0.85) 0%,
+            rgba(148, 163, 184, 0) 70%
+          );
         }
 
         .trail-uncommon {
-          filter: blur(5px)
-            drop-shadow(0 0 12px rgba(52, 211, 153, 0.9));
+          background: radial-gradient(
+            circle,
+            rgba(52, 211, 153, 0.9) 0%,
+            rgba(52, 211, 153, 0) 72%
+          );
         }
 
         .trail-rare {
-          filter: blur(6px)
-            drop-shadow(0 0 13px rgba(168, 85, 247, 0.95));
+          background: radial-gradient(
+            circle,
+            rgba(168, 85, 247, 0.92) 0%,
+            rgba(168, 85, 247, 0) 74%
+          );
         }
 
         .trail-epic {
-          filter: blur(6px)
-            drop-shadow(0 0 14px rgba(239, 68, 68, 0.95));
+          background: radial-gradient(
+            circle,
+            rgba(239, 68, 68, 0.95) 0%,
+            rgba(239, 68, 68, 0) 74%
+          );
         }
 
         .trail-legendary {
-          filter: blur(7px)
-            drop-shadow(0 0 16px rgba(236, 72, 153, 0.95))
-            drop-shadow(0 0 18px rgba(250, 204, 21, 0.95));
+          background: conic-gradient(
+              from 0deg,
+              rgba(236, 72, 153, 0.95),
+              rgba(249, 115, 22, 0.95),
+              rgba(250, 204, 21, 0.95),
+              rgba(34, 197, 94, 0.95),
+              rgba(59, 130, 246, 0.95),
+              rgba(168, 85, 247, 0.95),
+              rgba(236, 72, 153, 0.95)
+            );
+          mask-image: radial-gradient(circle, white 0%, transparent 70%);
+          -webkit-mask-image: radial-gradient(circle, white 0%, transparent 70%);
         }
 
-        .feed-mode .fish-trail-img {
-          filter: blur(7px)
-            drop-shadow(0 0 18px rgba(250, 204, 21, 0.98));
+        .feed-mode .trail-dot {
+          filter: blur(12px);
         }
 
         .pellet {
