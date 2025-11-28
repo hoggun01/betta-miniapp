@@ -413,11 +413,13 @@ export default function AquariumPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50 px-4 pb-8 pt-6">
-      <div className="w-full max-w-md space-y-4">
-        <header className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Betta Aquarium</h1>
-          <p className="text-xs text-slate-400">
+    <div className="min-h-screen flex items-start justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50 px-4 pb-6 pt-3">
+      <div className="w-full max-w-md space-y-3">
+        <header className="space-y-0.5 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight leading-tight">
+            Betta Aquarium
+          </h1>
+          <p className="text-[11px] text-slate-400 leading-tight">
             FID {fid ?? "-"}{" "}
             {walletAddress
               ? "• " +
@@ -431,7 +433,7 @@ export default function AquariumPage() {
         {/* Tank with custom background image */}
         <section
           className={
-            "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl overflow-hidden neon-frame" +
+            "relative w-full max-w-md aspect-[3/5] mx-auto rounded-3xl overflow-hidden neon-frame" +
             (isFeeding ? " feed-mode" : "")
           }
           style={{
@@ -549,11 +551,11 @@ export default function AquariumPage() {
         </section>
 
         {/* Bottom action buttons: FEED - MY FISH - BATTLE */}
-        <div className="flex items-center justify-center mt-3 gap-3">
+        <div className="flex items-center justify-center mt-4 gap-4">
           <button
             type="button"
             onClick={handleFeedClick}
-            className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-6 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-sky-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-8 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-sky-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isLoading || !!error || !fish.length}
           >
             FEED
@@ -561,7 +563,7 @@ export default function AquariumPage() {
           <button
             type="button"
             onClick={handleMyFishClick}
-            className="inline-flex items-center justify-center rounded-full bg-slate-800/90 px-5 py-2 text-xs font-semibold text-slate-100 border border-slate-600/80 shadow-md shadow-slate-900/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center rounded-full bg-slate-800/90 px-7 py-2.5 text-sm font-semibold text-slate-100 border border-slate-600/80 shadow-md shadow-slate-900/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isLoading || !!error || !fish.length}
           >
             MY FISH
@@ -569,7 +571,7 @@ export default function AquariumPage() {
           <button
             type="button"
             onClick={handleBattleClick}
-            className="inline-flex items-center justify-center rounded-full bg-fuchsia-600/90 px-5 py-2 text-xs font-semibold text-slate-50 shadow-md shadow-fuchsia-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center rounded-full bg-fuchsia-600/90 px-7 py-2.5 text-sm font-semibold text-slate-50 shadow-md shadow-fuchsia-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isLoading || !!error || !fish.length}
           >
             BATTLE
