@@ -431,7 +431,7 @@ export default function AquariumPage() {
         {/* Tank with custom background image */}
         <section
           className={
-            "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(56,189,248,0.6)] border border-sky-500/40" +
+            "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl overflow-hidden neon-frame" +
             (isFeeding ? " feed-mode" : "")
           }
           style={{
@@ -578,6 +578,16 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
+        /* NEON OUTLINE FRAME AROUND AQUARIUM */
+        .neon-frame {
+          border: 3px solid rgba(56, 189, 248, 0.85);
+          box-shadow:
+            0 0 12px rgba(56, 189, 248, 0.9),
+            0 0 25px rgba(56, 189, 248, 0.6),
+            0 0 40px rgba(56, 189, 248, 0.45);
+          backdrop-filter: blur(1px);
+        }
+
         /* Transparent wrapper: only flips direction */
         .fish-wrapper {
           display: flex;
