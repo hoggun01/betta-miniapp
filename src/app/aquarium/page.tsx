@@ -10,7 +10,6 @@ type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY";
 type FishToken = {
   tokenId: bigint;
   rarity: Rarity;
-  imageUrl: string;
 };
 
 type MovingFish = FishToken & {
@@ -58,15 +57,6 @@ const BETTA_ABI = [
     outputs: [{ name: "uri", type: "string" }],
   },
 ] as const;
-
-// Map rarity to local sprite in /public
-const RARITY_SPRITES: Record<Rarity, string> = {
-  COMMON: "/common.png",
-  UNCOMMON: "/uncommon.png",
-  RARE: "/rare.png",
-  EPIC: "/epic.png",
-  LEGENDARY: "/legendary.png",
-};
 
 function ipfsToHttp(uri: string): string {
   if (!uri) return uri;
@@ -259,14 +249,11 @@ export default function AquariumPage() {
             const meta = res.ok ? await res.json() : null;
 
             const rarity = detectRarityFromMetadata(meta);
-            const spriteUrl = RARITY_SPRITES[rarity];
-
             const motion = createInitialMotion(index++);
 
             fishes.push({
               tokenId: id,
               rarity,
-              imageUrl: spriteUrl,
               ...motion,
             });
           } catch (perTokenError) {
@@ -297,7 +284,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement using requestAnimationFrame
+  // Random movement with requestAnimationFrame
   useEffect(() => {
     let frame: number;
 
@@ -394,7 +381,6 @@ export default function AquariumPage() {
           </p>
         </header>
 
-        {/* Tank with custom background image */}
         <section
           className={
             "relative w-full max-w-md aspect-[3/4] mx-auto rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(56,189,248,0.6)] border border-sky-500/40" +
@@ -429,7 +415,6 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* Fishes */}
             {!isLoading &&
               !error &&
               fish.map((f) => (
@@ -444,17 +429,11 @@ export default function AquariumPage() {
                 >
                   <div
                     className={
-                      "fish-wrapper" +
-                      (f.facing === "left" ? " fish-facing-left" : " fish-facing-right")
+                      "fish-wrapper " +
+                      (f.facing === "left" ? "fish-facing-left " : "fish-facing-right ") +
+                      rarityToClass(f.rarity)
                     }
-                  >
-                    <img
-                      src={f.imageUrl}
-                      alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                      className="fish-img"
-                      draggable={false}
-                    />
-                  </div>
+                  />
                 </div>
               ))}
 
@@ -504,15 +483,15 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
-        /* Transparent wrapper: only for flipping direction */
         .fish-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: auto;
-          height: auto;
-          background: transparent;
-          box-shadow: none;
+          width: 4.5rem;
+          height: 4.5rem;
+          background-repeat: no-repeat;
+          background-size: 400% 100%; /* 4 frames horizontal */
+          image-rendering: auto;
+          animation: fishSwimFrames 0.45s steps(4) infinite;
+          filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
+          transform-origin: 20% 50%; /* dekat kepala, jadi ekor lebih kelihatan gerak */
         }
 
         .fish-facing-right {
@@ -523,36 +502,33 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* Tail/fin swim: rotate around tail, not just pulse */
-        @keyframes finSwim {
-          0% {
-            transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+        /* Sprite per rarity */
+        .fish-common {
+          background-image: url("/common-swim.png");
+        }
+        .fish-uncommon {
+          background-image: url("/uncommon-swim.png");
+        }
+        .fish-rare {
+          background-image: url("/rare-swim.png");
+        }
+        .fish-epic {
+          background-image: url("/epic-swim.png");
+        }
+        .fish-legendary {
+          background-image: url("/legendary-swim.png");
+        }
+
+        @keyframes fishSwimFrames {
+          from {
+            background-position: 0% 0;
           }
-          25% {
-            transform: translate3d(1px, -1px, 0) rotate(6deg) scale(1.02);
-          }
-          50% {
-            transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-          }
-          75% {
-            transform: translate3d(-1px, 1px, 0) rotate(-6deg) scale(1.02);
-          }
-          100% {
-            transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+          to {
+            background-position: 400% 0;
           }
         }
 
-        .fish-img {
-          width: 4.5rem;
-          height: 4.5rem;
-          object-fit: contain;
-          image-rendering: auto;
-          filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
-          transform-origin: 20% 50%; /* near tail to fake fin movement */
-          animation: finSwim 0.7s ease-in-out infinite;
-        }
-
-        .feed-mode .fish-img {
+        .feed-mode .fish-wrapper {
           filter: drop-shadow(0 0 24px rgba(250, 204, 21, 0.95));
         }
 
@@ -582,6 +558,23 @@ export default function AquariumPage() {
       `}</style>
     </div>
   );
+}
+
+function rarityToClass(rarity: Rarity): string {
+  switch (rarity) {
+    case "COMMON":
+      return "fish-common";
+    case "UNCOMMON":
+      return "fish-uncommon";
+    case "RARE":
+      return "fish-rare";
+    case "EPIC":
+      return "fish-epic";
+    case "LEGENDARY":
+      return "fish-legendary";
+    default:
+      return "fish-common";
+  }
 }
 
 type BadgeProps = {
