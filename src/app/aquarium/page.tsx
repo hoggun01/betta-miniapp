@@ -635,14 +635,14 @@ export default function AquariumPage() {
         /* left → right */
         .shadow-fish-ltr {
           top: 38%;
-          animation: shadowSwimLeftToRight 10s linear infinite;
+          animation: shadowSwimLeftToRight 40s linear infinite;
           animation-delay: 6s;
         }
 
         /* right → left */
         .shadow-fish-rtl {
           top: 65%;
-          animation: shadowSwimRightToLeft 15s linear infinite;
+          animation: shadowSwimRightToLeft 46s linear infinite;
           animation-delay: 24s;
         }
 
