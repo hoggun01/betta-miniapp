@@ -414,6 +414,11 @@ export default function AquariumPage() {
               <div className="bubble bubble-3" />
               <div className="bubble bubble-4" />
               <div className="bubble bubble-5" />
+              <div className="bubble bubble-6" />
+              <div className="bubble bubble-7" />
+              <div className="bubble bubble-8" />
+              <div className="bubble bubble-9" />
+              <div className="bubble bubble-10" />
             </div>
 
             {isLoading && (
@@ -461,7 +466,7 @@ export default function AquariumPage() {
                     <img
                       src={f.imageUrl}
                       alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                      className="fish-img fish-swim-loop fish-float-loop"
+                      className="fish-img fish-swim-loop"
                       draggable={false}
                     />
                   </div>
@@ -571,7 +576,7 @@ export default function AquariumPage() {
           }
         }
 
-        /* BUBBLES: slow rising every few seconds */
+        /* BUBBLES: multiple slow rising bubbles at different timings */
         .bubble-layer {
           position: absolute;
           inset: 0;
@@ -595,41 +600,71 @@ export default function AquariumPage() {
         }
 
         .bubble-1 {
-          left: 18%;
+          left: 12%;
           animation-duration: 9s;
           animation-delay: 1s;
         }
 
         .bubble-2 {
-          left: 35%;
+          left: 22%;
           animation-duration: 11s;
-          animation-delay: 5s;
+          animation-delay: 4s;
         }
 
         .bubble-3 {
-          left: 52%;
-          animation-duration: 10s;
-          animation-delay: 2.5s;
-        }
-
-        .bubble-4 {
-          left: 68%;
-          animation-duration: 12s;
+          left: 32%;
+          animation-duration: 8s;
           animation-delay: 7s;
         }
 
+        .bubble-4 {
+          left: 45%;
+          animation-duration: 10s;
+          animation-delay: 2s;
+        }
+
         .bubble-5 {
-          left: 82%;
+          left: 55%;
+          animation-duration: 12s;
+          animation-delay: 6s;
+        }
+
+        .bubble-6 {
+          left: 65%;
           animation-duration: 9.5s;
-          animation-delay: 4s;
+          animation-delay: 3s;
+        }
+
+        .bubble-7 {
+          left: 75%;
+          animation-duration: 7.5s;
+          animation-delay: 8s;
+        }
+
+        .bubble-8 {
+          left: 82%;
+          animation-duration: 10.5s;
+          animation-delay: 5s;
+        }
+
+        .bubble-9 {
+          left: 18%;
+          animation-duration: 8.5s;
+          animation-delay: 9s;
+        }
+
+        .bubble-10 {
+          left: 50%;
+          animation-duration: 7s;
+          animation-delay: 11s;
         }
 
         @keyframes bubbleUp {
           0% {
-            transform: translateY(0) scale(0.6);
+            transform: translateY(0) scale(0.7);
             opacity: 0;
           }
-          10% {
+          12% {
             opacity: 0.9;
           }
           80% {
