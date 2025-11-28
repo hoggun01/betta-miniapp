@@ -492,32 +492,46 @@ export default function AquariumPage() {
             {/* Fishes */}
             {!isLoading &&
               !error &&
-              fish.map((f) => (
-                <div
-                  key={f.tokenId.toString()}
-                  className="absolute"
-                  style={{
-                    left: `${f.x}%`,
-                    top: `${f.y}%`,
-                    transform: "translate(-50%, -50%)",
-                    zIndex: 2,
-                  }}
-                >
+              fish.map((f) => {
+                const rarityClass =
+                  f.rarity === "COMMON"
+                    ? "rarity-common"
+                    : f.rarity === "UNCOMMON"
+                    ? "rarity-uncommon"
+                    : f.rarity === "RARE"
+                    ? "rarity-rare"
+                    : f.rarity === "EPIC"
+                    ? "rarity-epic"
+                    : "rarity-legendary";
+
+                return (
                   <div
-                    className={
-                      "fish-wrapper" +
-                      (f.facing === "left" ? " fish-facing-left" : " fish-facing-right")
-                    }
+                    key={f.tokenId.toString()}
+                    className="absolute"
+                    style={{
+                      left: `${f.x}%`,
+                      top: `${f.y}%`,
+                      transform: "translate(-50%, -50%)",
+                      zIndex: 2,
+                    }}
                   >
-                    <img
-                      src={f.imageUrl}
-                      alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                      className="fish-img"
-                      draggable={false}
-                    />
+                    <div
+                      className={
+                        "fish-wrapper " +
+                        rarityClass +
+                        (f.facing === "left" ? " fish-facing-left" : " fish-facing-right")
+                      }
+                    >
+                      <img
+                        src={f.imageUrl}
+                        alt={f.rarity + " Betta #" + f.tokenId.toString()}
+                        className="fish-img"
+                        draggable={false}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
             {isFeeding && (
               <>
@@ -590,8 +604,9 @@ export default function AquariumPage() {
           backdrop-filter: blur(1px);
         }
 
-        /* Transparent wrapper: only flips direction */
+        /* Transparent wrapper: only flips direction + aura trail */
         .fish-wrapper {
+          position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -599,6 +614,104 @@ export default function AquariumPage() {
           height: auto;
           background: transparent;
           box-shadow: none;
+        }
+
+        /* BASE AURA SHAPE */
+        .fish-wrapper::before {
+          content: "";
+          position: absolute;
+          width: 5.1rem;
+          height: 5.1rem;
+          border-radius: 9999px;
+          opacity: 0.22;
+          filter: blur(18px);
+          pointer-events: none;
+          z-index: -1;
+          animation: auraDrift 2.4s ease-in-out infinite;
+          background: radial-gradient(
+            circle,
+            rgba(148, 163, 184, 0.6) 0%,
+            rgba(15, 23, 42, 0) 65%
+          );
+        }
+
+        /* COMMON – grey, paling halus */
+        .rarity-common.fish-wrapper::before {
+          background: radial-gradient(
+            circle,
+            rgba(148, 163, 184, 0.6) 0%,
+            rgba(15, 23, 42, 0) 65%
+          );
+          opacity: 0.18;
+          filter: blur(16px);
+        }
+
+        /* UNCOMMON – hijau */
+        .rarity-uncommon.fish-wrapper::before {
+          background: radial-gradient(
+            circle,
+            rgba(52, 211, 153, 0.7) 0%,
+            rgba(15, 23, 42, 0) 65%
+          );
+          opacity: 0.26;
+          filter: blur(18px);
+        }
+
+        /* RARE – ungu */
+        .rarity-rare.fish-wrapper::before {
+          background: radial-gradient(
+            circle,
+            rgba(168, 85, 247, 0.75) 0%,
+            rgba(15, 23, 42, 0) 68%
+          );
+          opacity: 0.32;
+          filter: blur(19px);
+        }
+
+        /* EPIC – merah lebih kuat */
+        .rarity-epic.fish-wrapper::before {
+          background: radial-gradient(
+            circle,
+            rgba(239, 68, 68, 0.8) 0%,
+            rgba(251, 113, 133, 0.0) 70%
+          );
+          opacity: 0.38;
+          filter: blur(20px);
+        }
+
+        /* LEGENDARY – pelangi (rainbow) paling jelas */
+        .rarity-legendary.fish-wrapper::before {
+          width: 5.4rem;
+          height: 5.4rem;
+          background: conic-gradient(
+            from 0deg,
+            rgba(236, 72, 153, 0.9),
+            rgba(249, 115, 22, 0.9),
+            rgba(250, 204, 21, 0.9),
+            rgba(34, 197, 94, 0.9),
+            rgba(59, 130, 246, 0.9),
+            rgba(168, 85, 247, 0.9),
+            rgba(236, 72, 153, 0.9)
+          );
+          opacity: 0.45;
+          filter: blur(22px);
+        }
+
+        /* saat feed, semua aura sedikit lebih terang */
+        .feed-mode .fish-wrapper::before {
+          opacity: 0.6;
+        }
+
+        @keyframes auraDrift {
+          0% {
+            opacity: 0.95;
+          }
+          50% {
+            opacity: 1;
+          }
+          100% {
+            opacity: 0.95;
+          }
         }
 
         .fish-facing-right {
