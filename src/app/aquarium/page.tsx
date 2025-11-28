@@ -16,7 +16,7 @@ type FishToken = {
 type TrailPoint = {
   x: number; // 0-100 (%)
   y: number; // 0-100 (%)
-  life: number; // 0-1 (dipakai untuk opacity & scale)
+  life: number; // 0-1 (used for opacity & scale)
 };
 
 type MovingFish = FishToken & {
@@ -237,61 +237,155 @@ export default function AquariumPage() {
 
         const maxTokenId = nextTokenIdValue - ONE;
 
+        // Safety cap: do not scan more than 500 earliest tokens
         const HARD_CAP = BigInt(500);
-        const endTokenId = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
+        const effectiveMax = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
+
+        const tokenIds: bigint[] = [];
+        for (let id = ONE; id <= effectiveMax; id = id + ONE) {
+          tokenIds.push(id);
+        }
 
         const fishes: MovingFish[] = [];
         let index = 0;
         let found = 0;
+        let hitRateLimit = false;
 
-        for (let id = ONE; id <= endTokenId; id = id + ONE) {
+        const BATCH_SIZE = 24;
+        const scanStartedAt = Date.now();
+        const MAX_SCAN_MS = 12000;
+
+        const lowerAddress = address.toLowerCase();
+
+        for (let i = 0; i < tokenIds.length; i += BATCH_SIZE) {
+          if (Date.now() - scanStartedAt > MAX_SCAN_MS) {
+            console.warn("Aquarium scan timeout; stopping early");
+            break;
+          }
+
+          const batchIds = tokenIds.slice(i, i + BATCH_SIZE);
+
+          let ownerResults: any[];
           try {
-            const owner = (await client.readContract({
-              address: BETTA_CONTRACT_ADDRESS,
-              abi: BETTA_ABI,
-              functionName: "ownerOf",
-              args: [id],
-            })) as string;
+            ownerResults = await client.multicall({
+              contracts: batchIds.map((id) => ({
+                address: BETTA_CONTRACT_ADDRESS,
+                abi: BETTA_ABI,
+                functionName: "ownerOf",
+                args: [id],
+              })),
+              allowFailure: true,
+            });
+          } catch (err: any) {
+            const code = err?.code;
+            const message: string =
+              err?.shortMessage || err?.message || "";
 
-            if (owner.toLowerCase() !== address.toLowerCase()) {
+            if (code === -32016 || message.toLowerCase().includes("rate limit")) {
+              console.warn("RPC rate limit during ownerOf multicall", err);
+              hitRateLimit = true;
+              break;
+            }
+
+            console.error("Error in ownerOf multicall", err);
+            break;
+          }
+
+          const myTokenIds: bigint[] = [];
+          ownerResults.forEach((res, idx) => {
+            if (!res || res.status !== "success" || !res.result) return;
+            const owner = (res.result as string).toLowerCase();
+            if (owner === lowerAddress) {
+              myTokenIds.push(batchIds[idx]);
+            }
+          });
+
+          if (myTokenIds.length === 0) {
+            if (found >= balanceNum) break;
+            continue;
+          }
+
+          let uriResults: any[];
+          try {
+            uriResults = await client.multicall({
+              contracts: myTokenIds.map((id) => ({
+                address: BETTA_CONTRACT_ADDRESS,
+                abi: BETTA_ABI,
+                functionName: "tokenURI",
+                args: [id],
+              })),
+              allowFailure: true,
+            });
+          } catch (err: any) {
+            const code = err?.code;
+            const message: string =
+              err?.shortMessage || err?.message || "";
+
+            if (code === -32016 || message.toLowerCase().includes("rate limit")) {
+              console.warn("RPC rate limit during tokenURI multicall", err);
+              hitRateLimit = true;
+              break;
+            }
+
+            console.error("Error in tokenURI multicall", err);
+            break;
+          }
+
+          for (let j = 0; j < myTokenIds.length; j++) {
+            const tokenId = myTokenIds[j];
+            const uriRes = uriResults[j];
+
+            if (!uriRes || uriRes.status !== "success" || !uriRes.result) {
               continue;
             }
 
-            const rawUri = (await client.readContract({
-              address: BETTA_CONTRACT_ADDRESS,
-              abi: BETTA_ABI,
-              functionName: "tokenURI",
-              args: [id],
-            })) as string;
+            const rawUri = uriRes.result as string;
 
-            const metadataUrl = ipfsToHttp(rawUri);
-            const res = await fetch(metadataUrl);
-            const meta = res.ok ? await res.json() : null;
+            try {
+              const metadataUrl = ipfsToHttp(rawUri);
+              const res = await fetch(metadataUrl);
+              const meta = res.ok ? await res.json() : null;
 
-            const rarity = detectRarityFromMetadata(meta);
-            const spriteUrl = RARITY_SPRITES[rarity];
+              const rarity = detectRarityFromMetadata(meta);
+              const spriteUrl = RARITY_SPRITES[rarity];
 
-            const motion = createInitialMotion(index++);
+              const motion = createInitialMotion(index++);
 
-            fishes.push({
-              tokenId: id,
-              rarity,
-              imageUrl: spriteUrl,
-              trail: [],
-              ...motion,
-            });
+              fishes.push({
+                tokenId,
+                rarity,
+                imageUrl: spriteUrl,
+                trail: [],
+                ...motion,
+              });
 
-            found += 1;
-            if (found >= balanceNum) {
-              break;
+              found += 1;
+              if (found >= balanceNum) {
+                break;
+              }
+            } catch (metaError) {
+              console.error(
+                "Error loading metadata for token",
+                tokenId.toString(),
+                metaError
+              );
             }
-          } catch (perTokenError) {
-            console.error("Error loading token", id.toString(), perTokenError);
+          }
+
+          if (found >= balanceNum || hitRateLimit) {
+            break;
           }
         }
 
         if (!cancelled) {
           setFish(fishes);
+
+          if (balanceNum > 0 && fishes.length === 0 && hitRateLimit) {
+            setError(
+              "We hit an RPC rate limit while loading your fish. Please try reopening your aquarium in a moment."
+            );
+          }
+
           setIsLoading(false);
         }
 
@@ -322,7 +416,7 @@ export default function AquariumPage() {
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
-          // wander kecil
+          // Small random wander so fish do not move in a perfect straight line
           const wanderStrengthX = 0.01;
           const wanderStrengthY = 0.008;
 
@@ -372,12 +466,10 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          // --- MOTION TRAIL (AURA EKOR) ---
-          const MAX_TRAIL_POINTS = 16;
-          const DECAY = 0.07;
-
-          // semakin besar offsetMultiplier → ekor lebih panjang di belakang
-          const offsetMultiplier = 30;
+          // Motion trail (aura tail behind the fish, nyan-cat style)
+          const MAX_TRAIL_POINTS = 28;
+          const DECAY = 0.035;
+          const offsetMultiplier = 26;
 
           const trailHeadX = x - vx * offsetMultiplier;
           const trailHeadY = y - vy * offsetMultiplier;
@@ -532,7 +624,7 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* AURA TAIL TRAIL: deretan blur bulat di jalur belakang ikan */}
+            {/* Aura tail trail behind each fish */}
             {!isLoading &&
               !error &&
               fish.map((f) =>
@@ -548,7 +640,8 @@ export default function AquariumPage() {
                       ? "trail-epic"
                       : "trail-legendary";
 
-                  const scale = 0.4 + 0.6 * p.life;
+                  // Newest point (life = 1) is biggest; older points shrink
+                  const scale = 0.3 + 1.0 * p.life; // 1.3 -> 0.3
 
                   return (
                     <div
@@ -565,7 +658,7 @@ export default function AquariumPage() {
                 })
               )}
 
-            {/* IKAN UTAMA */}
+            {/* Main fish sprites */}
             {!isLoading &&
               !error &&
               fish.map((f) => {
@@ -701,7 +794,7 @@ export default function AquariumPage() {
           transform: none;
         }
 
-        /* OUTER LINE SESUAI RARITY (outline ngikut bentuk ikan) */
+        /* Outer line per rarity (outline follows fish shape) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 3px rgba(148, 163, 184, 1))
@@ -740,18 +833,17 @@ export default function AquariumPage() {
             drop-shadow(0 0 16px rgba(250, 204, 21, 0.98));
         }
 
-        /* AURA TRAIL DOTS (ekor) */
+        /* Aura tail dots (nyan-cat style) */
         .trail-dot {
           position: absolute;
-          width: 3.4rem;
-          height: 3.4rem;
+          width: 4.8rem;
+          height: 4.8rem;
           border-radius: 9999px;
           pointer-events: none;
           z-index: 2;
-          filter: blur(10px);
+          filter: blur(12px);
         }
 
-        /* warna tail per rarity */
         .trail-common {
           background: radial-gradient(
             circle,
@@ -800,7 +892,7 @@ export default function AquariumPage() {
         }
 
         .feed-mode .trail-dot {
-          filter: blur(12px);
+          filter: blur(14px);
         }
 
         .pellet {
