@@ -210,6 +210,9 @@ export default function AquariumPage() {
           return;
         }
 
+        // User has some fish; convert to number for stopping condition
+        const balanceNum = Number(balance);
+
         const nextTokenIdValue = (await client.readContract({
           address: BETTA_CONTRACT_ADDRESS,
           abi: BETTA_ABI,
@@ -233,6 +236,7 @@ export default function AquariumPage() {
 
         const fishes: MovingFish[] = [];
         let index = 0;
+        let found = 0;
 
         for (let id = ONE; id <= endTokenId; id = id + ONE) {
           try {
@@ -269,6 +273,12 @@ export default function AquariumPage() {
               imageUrl: spriteUrl,
               ...motion,
             });
+
+            found += 1;
+            if (found >= balanceNum) {
+              // All of this user's fish have been found; no need to scan further
+              break;
+            }
           } catch (perTokenError) {
             console.error("Error loading token", id.toString(), perTokenError);
           }
@@ -673,7 +683,7 @@ export default function AquariumPage() {
           background: radial-gradient(
             circle,
             rgba(239, 68, 68, 0.8) 0%,
-            rgba(251, 113, 133, 0.0) 70%
+            rgba(251, 113, 133, 0) 70%
           );
           opacity: 0.38;
           filter: blur(20px);
