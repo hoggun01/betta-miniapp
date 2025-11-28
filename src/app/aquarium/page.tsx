@@ -110,7 +110,7 @@ function createRandomMotion(): {
   return {
     top: 10 + Math.random() * 60,
     left: 5 + Math.random() * 70,
-    duration: 9 + Math.random() * 6,
+    duration: 10 + Math.random() * 6, // 10–16s biar smooth
     delay: Math.random() * 4,
   };
 }
@@ -383,8 +383,8 @@ export default function AquariumPage() {
                   key={f.tokenId.toString()}
                   className="absolute"
                   style={{
-                    top: f.top + "%",      // posisi dasar random
-                    left: f.left + "%",    // posisi dasar random
+                    top: f.top + "%", // base position
+                    left: f.left + "%", // base position
                     animationDuration: f.duration + "s",
                     animationDelay: f.delay + "s",
                   }}
@@ -392,7 +392,7 @@ export default function AquariumPage() {
                   <img
                     src={f.imageUrl}
                     alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                    className="swim w-24 h-24 object-contain drop-shadow-[0_0_22px_rgba(56,189,248,0.9)]"
+                    className="swim w-24 h-24 object-contain drop-shadow-[0_0_24px_rgba(56,189,248,0.9)]"
                     draggable={false}
                   />
                 </div>
@@ -438,39 +438,44 @@ export default function AquariumPage() {
             Feed
           </button>
           <span className="text-[10px] text-slate-500">
-            Fish move in soft loops. Feeding adds a short glow.
+            Fish move in looping waves. Feeding adds a short glow.
           </span>
         </div>
       </div>
 
       <style jsx global>{`
-        /* path renang lebih besar: kanan, kiri, atas, bawah + sedikit rotasi */
+        /* Big looping path: kiri -> atas -> kanan -> bawah -> balik kiri */
         @keyframes swim {
           0% {
-            transform: translate3d(-40px, 0px, 0) scale(0.96) rotate(2deg);
+            transform: translate3d(-120px, 0px, 0) scale(1) rotate(0deg);
           }
           20% {
-            transform: translate3d(10px, -22px, 0) scale(1.02) rotate(-4deg);
+            transform: translate3d(-40px, -60px, 0) scale(1.02) rotate(-4deg);
           }
           40% {
-            transform: translate3d(48px, -8px, 0) scale(1.05) rotate(3deg);
+            transform: translate3d(60px, -40px, 0) scale(1.04) rotate(3deg);
           }
-          60% {
-            transform: translate3d(32px, 24px, 0) scale(1.03) rotate(-3deg);
+          50% {
+            /* balik arah, flip horizontal */
+            transform: translate3d(120px, 0px, 0) scale(1.03) rotate(0deg) scaleX(-1);
           }
-          80% {
-            transform: translate3d(-18px, 32px, 0) scale(1.0) rotate(1deg);
+          70% {
+            transform: translate3d(40px, 60px, 0) scale(1.01) rotate(4deg) scaleX(-1);
+          }
+          90% {
+            transform: translate3d(-60px, 40px, 0) scale(1) rotate(-3deg) scaleX(-1);
           }
           100% {
-            transform: translate3d(-40px, 0px, 0) scale(0.96) rotate(0deg);
+            transform: translate3d(-120px, 0px, 0) scale(1) rotate(0deg);
           }
         }
 
         .swim {
           animation-name: swim;
-          animation-timing-function: ease-in-out;
+          animation-timing-function: linear;
           animation-iteration-count: infinite;
-          animation-direction: alternate;
+          animation-direction: normal;
+          transform-origin: center center;
         }
 
         .feed-mode .swim {
