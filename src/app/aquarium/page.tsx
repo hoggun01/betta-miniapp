@@ -65,8 +65,16 @@ export default function AquariumPage() {
 
         const anyContext = context as any;
 
-        const userFid = anyContext.user?.fid ?? null;
-        const address = anyContext.wallet?.address ?? null;
+        console.log("Aquarium miniapp context:", anyContext);
+
+        const userFid: number | null = anyContext.user?.fid ?? null;
+
+        const address: string | null =
+          anyContext.wallet?.address ??
+          anyContext.walletAddress ??
+          anyContext.address ??
+          anyContext.connectedAddress ??
+          null;
 
         setFid(userFid);
         setWalletAddress(address);
@@ -239,9 +247,9 @@ export default function AquariumPage() {
             <div className="absolute inset-0">
               {fishList.map((fish) => {
                 const visualY =
-                  fish.y + Math.sin(fish.wavePhase) * 2; // small up/down wave
+                  fish.y + Math.sin(fish.wavePhase) * 2;
                 const angle =
-                  Math.sin(fish.wavePhase * 1.6) * 5; // small body rotation
+                  Math.sin(fish.wavePhase * 1.6) * 5;
                 const baseScale = RARITY_SCALE[fish.rarity];
                 const scaleX =
                   (fish.facing === "left" ? -1 : 1) * baseScale;
