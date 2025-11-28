@@ -13,8 +13,8 @@ type FishToken = {
 };
 
 type MovingFish = FishToken & {
-  x: number; // 0-100 (horizontal, %)
-  y: number; // 0-100 (vertical, %)
+  x: number;
+  y: number;
   vx: number;
   vy: number;
   facing: "left" | "right";
@@ -26,7 +26,6 @@ const BETTA_CONTRACT_ADDRESS = process.env
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
 
-// Minimal ABI: nextTokenId, balanceOf, ownerOf, tokenURI
 const BETTA_ABI = [
   {
     type: "function",
@@ -40,21 +39,21 @@ const BETTA_ABI = [
     name: "balanceOf",
     stateMutability: "view",
     inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ name: "balance", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
     name: "ownerOf",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "address" }],
   },
   {
     type: "function",
     name: "tokenURI",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "uri", type: "string" }],
+    outputs: [{ name: "", type: "string" }],
   },
 ] as const;
 
@@ -284,7 +283,6 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement with requestAnimationFrame
   useEffect(() => {
     let frame: number;
 
@@ -487,11 +485,11 @@ export default function AquariumPage() {
           width: 4.5rem;
           height: 4.5rem;
           background-repeat: no-repeat;
-          background-size: 400% 100%; /* 4 frames horizontal */
+          background-size: 800% 100%; /* 8 frames horizontal */
+          background-position: 0% 0;
           image-rendering: auto;
-          animation: fishSwimFrames 0.45s steps(4) infinite;
+          animation: fishSwimFrames 0.6s steps(8) infinite;
           filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9));
-          transform-origin: 20% 50%; /* dekat kepala, jadi ekor lebih kelihatan gerak */
         }
 
         .fish-facing-right {
@@ -502,21 +500,20 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* Sprite per rarity */
         .fish-common {
-          background-image: url("/common-swim.png");
+          background-image: url("/common-swim8.png");
         }
         .fish-uncommon {
-          background-image: url("/uncommon-swim.png");
+          background-image: url("/uncommon-swim8.png");
         }
         .fish-rare {
-          background-image: url("/rare-swim.png");
+          background-image: url("/rare-swim8.png");
         }
         .fish-epic {
-          background-image: url("/epic-swim.png");
+          background-image: url("/epic-swim8.png");
         }
         .fish-legendary {
-          background-image: url("/legendary-swim.png");
+          background-image: url("/legendary-swim8.png");
         }
 
         @keyframes fishSwimFrames {
@@ -524,7 +521,7 @@ export default function AquariumPage() {
             background-position: 0% 0;
           }
           to {
-            background-position: 400% 0;
+            background-position: 100% 0;
           }
         }
 
