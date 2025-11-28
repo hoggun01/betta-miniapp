@@ -51,19 +51,58 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Initialize 1 demo fish (replace imageUrl with your new PNG later)
+  // Initialize fishes (one per rarity, using /public PNGs)
   useEffect(() => {
     setFishList([
       {
-        id: "fish-1",
-        imageUrl:
-          "https://ipfs.io/ipfs/bafybeigqco3p2wghywrvogldw75twvn53z2vsoaqxyjsncqskn4jlt6p7u/common.png",
+        id: "fish-common",
+        imageUrl: "/common.png",
         rarity: "COMMON",
-        x: 50,
-        y: 40,
-        vx: 0.12,
-        vy: 0.08,
+        x: 35,
+        y: 45,
+        vx: 0.10,
+        vy: 0.06,
         facing: "right",
+      },
+      {
+        id: "fish-uncommon",
+        imageUrl: "/uncommon.png",
+        rarity: "UNCOMMON",
+        x: 70,
+        y: 35,
+        vx: -0.09,
+        vy: 0.05,
+        facing: "left",
+      },
+      {
+        id: "fish-rare",
+        imageUrl: "/rare.png",
+        rarity: "RARE",
+        x: 55,
+        y: 65,
+        vx: 0.07,
+        vy: -0.06,
+        facing: "right",
+      },
+      {
+        id: "fish-epic",
+        imageUrl: "/epic.png",
+        rarity: "EPIC",
+        x: 25,
+        y: 30,
+        vx: 0.08,
+        vy: 0.07,
+        facing: "right",
+      },
+      {
+        id: "fish-legendary",
+        imageUrl: "/legendary.png",
+        rarity: "LEGENDARY",
+        x: 80,
+        y: 60,
+        vx: -0.11,
+        vy: -0.05,
+        facing: "left",
       },
     ]);
   }, []);
@@ -150,6 +189,7 @@ export default function AquariumPage() {
                 : "shadow-[0_0_40px_rgba(15,23,42,0.9)]"
             }`}
           >
+            {/* Fish layer */}
             <div className="absolute inset-0">
               {fishList.map((fish) => (
                 <div
@@ -161,9 +201,9 @@ export default function AquariumPage() {
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-[24px] bg-gradient-to-b from-sky-500/20 via-sky-400/10 to-sky-900/5 flex items-center justify-center shadow-[0_0_35px_rgba(56,189,248,0.65)]">
+                  <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-[24px] bg-gradient-to-b from-sky-500/15 via-sky-400/10 to-sky-900/5 flex items-center justify-center shadow-[0_0_30px_rgba(56,189,248,0.55)]">
                     <div
-                      className={`relative w-24 h-24 sm:w-28 sm:h-28 ${
+                      className={`relative w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_0_25px_rgba(250,250,210,0.85)] ${
                         fish.facing === "left" ? "scale-x-[-1]" : ""
                       }`}
                     >
