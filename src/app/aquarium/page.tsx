@@ -392,7 +392,7 @@ export default function AquariumPage() {
                   <img
                     src={f.imageUrl}
                     alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                    className="swim w-24 h-24 object-contain drop-shadow-[0_0_18px_rgba(56,189,248,0.8)]"
+                    className="fish-sprite swim w-24 h-24 object-contain drop-shadow-[0_0_18px_rgba(56,189,248,0.8)]"
                     draggable={false}
                   />
                 </div>
@@ -444,15 +444,22 @@ export default function AquariumPage() {
       </div>
 
       <style jsx global>{`
+        /* Bigger swimming path: move left, right, up, and down */
         @keyframes swim {
           0% {
-            transform: translate3d(0, 0, 0) scale(1);
+            transform: translate3d(-30px, -10px, 0) scale(1);
+          }
+          25% {
+            transform: translate3d(25px, -25px, 0) scale(1.03);
           }
           50% {
-            transform: translate3d(12px, -6px, 0) scale(1.03);
+            transform: translate3d(45px, 10px, 0) scale(1);
+          }
+          75% {
+            transform: translate3d(-15px, 25px, 0) scale(0.98);
           }
           100% {
-            transform: translate3d(-8px, 10px, 0) scale(1);
+            transform: translate3d(-30px, -10px, 0) scale(1);
           }
         }
 
@@ -461,6 +468,11 @@ export default function AquariumPage() {
           animation-timing-function: ease-in-out;
           animation-iteration-count: infinite;
           animation-direction: alternate;
+        }
+
+        /* Try to hide black background from non-transparent PNGs */
+        .fish-sprite {
+          mix-blend-mode: screen;
         }
 
         .feed-mode .swim {
