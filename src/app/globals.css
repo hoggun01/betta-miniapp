@@ -290,51 +290,66 @@ h6 {
 
 /* ================================
    FISH SWIM ANIMATIONS
-   - used in aquarium/page.tsx via:
-   - className="fish-img fish-swim-loop fish-float-loop"
+   - applied via className="fish-img fish-swim-loop fish-float-loop"
+   - fish-swim-loop: set pivot point (badan ke depan)
+   - fish-float-loop: actual animation (body sway + float)
 ================================ */
 
 .fish-swim-loop {
-  animation: fish-sway 2.8s ease-in-out infinite;
+  /* pivot near head so tail feels like pushing water */
   transform-origin: 40% 50%;
 }
 
 .fish-float-loop {
-  animation: fish-float 7s ease-in-out infinite;
+  /* TWO animations at once:
+     1) fish-sway  : badan+ekor goyang
+     2) fish-float : naik-turun pelan
+  */
+  animation:
+    fish-sway 1.9s ease-in-out infinite,
+    fish-float 6.5s ease-in-out infinite;
 }
 
+/* Body + tail sway (lebih dramatis, biar kerasa hidup) */
 @keyframes fish-sway {
   0% {
-    transform: translateY(0) rotate(0deg) scale(1);
+    transform: translateY(0px) rotate(0deg) scale(1, 1);
   }
-  25% {
-    transform: translateY(-1px) rotate(1.1deg) scale(1.01);
+  15% {
+    transform: translateY(-4px) rotate(3deg) scale(1.03, 0.97);
+  }
+  35% {
+    transform: translateY(-1px) rotate(-2deg) scale(0.99, 1.02);
   }
   50% {
-    transform: translateY(0) rotate(0deg) scale(1);
+    transform: translateY(0px) rotate(0deg) scale(1, 1);
   }
-  75% {
-    transform: translateY(1px) rotate(-1.1deg) scale(0.99);
+  65% {
+    transform: translateY(3px) rotate(-3deg) scale(1.02, 0.98);
+  }
+  85% {
+    transform: translateY(1px) rotate(2deg) scale(0.98, 1.03);
   }
   100% {
-    transform: translateY(0) rotate(0deg) scale(1);
+    transform: translateY(0px) rotate(0deg) scale(1, 1);
   }
 }
 
+/* Slow float up & down (layer kedua) */
 @keyframes fish-float {
   0% {
-    transform: translateY(0);
+    transform: translateY(0px);
   }
   25% {
-    transform: translateY(-6px);
+    transform: translateY(-10px);
   }
   50% {
-    transform: translateY(0);
+    transform: translateY(0px);
   }
   75% {
-    transform: translateY(5px);
+    transform: translateY(8px);
   }
   100% {
-    transform: translateY(0);
+    transform: translateY(0px);
   }
 }
