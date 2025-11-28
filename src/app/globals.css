@@ -40,12 +40,11 @@ body {
   background-position: center;
   background-attachment: fixed;
   color: var(--foreground);
-  /* FUN FONT UTAMA */
   font-family: "ShootingStarPU", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
 }
 
-/* headings pakai font yang sama, sedikit letter-spacing biar kartun */
+/* headings use the same fun font */
 h1,
 h2,
 h3,
@@ -57,7 +56,7 @@ h6 {
   letter-spacing: 0.03em;
 }
 
-/* Kalau ada class Tailwind .font-sans, paksa juga ke ShootingStar */
+/* Force Tailwind .font-sans to use ShootingStarPU as well */
 .font-sans {
   font-family: "ShootingStarPU", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif !important;
@@ -290,66 +289,34 @@ h6 {
 
 /* ================================
    FISH SWIM ANIMATIONS
-   - applied via className="fish-img fish-swim-loop fish-float-loop"
-   - fish-swim-loop: set pivot point (badan ke depan)
-   - fish-float-loop: actual animation (body sway + float)
+   - simple, no scaling (no shrink/grow)
+   - only one transform animation to avoid stacking issues
 ================================ */
 
 .fish-swim-loop {
-  /* pivot near head so tail feels like pushing water */
+  animation: fish-swim 3s ease-in-out infinite;
   transform-origin: 40% 50%;
 }
 
+/* kept for compatibility, but empty to avoid extra transform animation */
 .fish-float-loop {
-  /* TWO animations at once:
-     1) fish-sway  : badan+ekor goyang
-     2) fish-float : naik-turun pelan
-  */
-  animation:
-    fish-sway 1.9s ease-in-out infinite,
-    fish-float 6.5s ease-in-out infinite;
 }
 
-/* Body + tail sway (lebih dramatis, biar kerasa hidup) */
-@keyframes fish-sway {
+/* body sway + gentle vertical motion in a single animation */
+@keyframes fish-swim {
   0% {
-    transform: translateY(0px) rotate(0deg) scale(1, 1);
+    transform: translateY(0px) rotate(0deg);
   }
-  15% {
-    transform: translateY(-4px) rotate(3deg) scale(1.03, 0.97);
-  }
-  35% {
-    transform: translateY(-1px) rotate(-2deg) scale(0.99, 1.02);
+  20% {
+    transform: translateY(-8px) rotate(3deg);
   }
   50% {
-    transform: translateY(0px) rotate(0deg) scale(1, 1);
+    transform: translateY(0px) rotate(0deg);
   }
-  65% {
-    transform: translateY(3px) rotate(-3deg) scale(1.02, 0.98);
-  }
-  85% {
-    transform: translateY(1px) rotate(2deg) scale(0.98, 1.03);
+  80% {
+    transform: translateY(6px) rotate(-3deg);
   }
   100% {
-    transform: translateY(0px) rotate(0deg) scale(1, 1);
-  }
-}
-
-/* Slow float up & down (layer kedua) */
-@keyframes fish-float {
-  0% {
-    transform: translateY(0px);
-  }
-  25% {
-    transform: translateY(-10px);
-  }
-  50% {
-    transform: translateY(0px);
-  }
-  75% {
-    transform: translateY(8px);
-  }
-  100% {
-    transform: translateY(0px);
+    transform: translateY(0px) rotate(0deg);
   }
 }

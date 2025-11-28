@@ -407,6 +407,15 @@ export default function AquariumPage() {
           }}
         >
           <div className="relative w-full h-full">
+            {/* Bubble layer */}
+            <div className="bubble-layer">
+              <div className="bubble bubble-1" />
+              <div className="bubble bubble-2" />
+              <div className="bubble bubble-3" />
+              <div className="bubble bubble-4" />
+              <div className="bubble bubble-5" />
+            </div>
+
             {isLoading && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-sky-100 bg-slate-900/40">
                 <div className="h-10 w-10 rounded-full border-2 border-sky-400/60 border-t-transparent animate-spin" />
@@ -440,6 +449,7 @@ export default function AquariumPage() {
                     left: `${f.x}%`,
                     top: `${f.y}%`,
                     transform: "translate(-50%, -50%)",
+                    zIndex: 1,
                   }}
                 >
                   <div
@@ -523,7 +533,7 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* STATIC SIZE & GLOW; SWIM/FLOAT ANIMATIONS COME FROM GLOBAL CSS CLASSES */
+        /* static size & glow; movement comes from global fish-swim animation */
         .fish-img {
           width: 4.5rem;
           height: 4.5rem;
@@ -557,6 +567,76 @@ export default function AquariumPage() {
           }
           100% {
             transform: translateY(40px);
+            opacity: 0;
+          }
+        }
+
+        /* BUBBLES: slow rising every few seconds */
+        .bubble-layer {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .bubble {
+          position: absolute;
+          bottom: -40px;
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          border: 2px solid rgba(191, 219, 254, 0.75);
+          background: rgba(191, 219, 254, 0.18);
+          opacity: 0;
+          animation-name: bubbleUp;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+
+        .bubble-1 {
+          left: 18%;
+          animation-duration: 9s;
+          animation-delay: 1s;
+        }
+
+        .bubble-2 {
+          left: 35%;
+          animation-duration: 11s;
+          animation-delay: 5s;
+        }
+
+        .bubble-3 {
+          left: 52%;
+          animation-duration: 10s;
+          animation-delay: 2.5s;
+        }
+
+        .bubble-4 {
+          left: 68%;
+          animation-duration: 12s;
+          animation-delay: 7s;
+        }
+
+        .bubble-5 {
+          left: 82%;
+          animation-duration: 9.5s;
+          animation-delay: 4s;
+        }
+
+        @keyframes bubbleUp {
+          0% {
+            transform: translateY(0) scale(0.6);
+            opacity: 0;
+          }
+          10% {
+            opacity: 0.9;
+          }
+          80% {
+            opacity: 0.9;
+          }
+          100% {
+            transform: translateY(-130vh) scale(1);
             opacity: 0;
           }
         }
