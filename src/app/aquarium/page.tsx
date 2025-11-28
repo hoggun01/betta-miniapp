@@ -112,9 +112,9 @@ function createInitialMotion(index: number): {
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
-  const base = 0.1 + Math.random() * 0.05;
+  const base = 0.09 + Math.random() * 0.05;
   const vx = (Math.random() > 0.5 ? 1 : -1) * base;
-  const vy = (Math.random() > 0.5 ? 1 : -1) * (0.05 + Math.random() * 0.04);
+  const vy = (Math.random() > 0.5 ? 1 : -1) * (0.04 + Math.random() * 0.03);
 
   return {
     x,
@@ -297,7 +297,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement using requestAnimationFrame
+  // Random movement using requestAnimationFrame, with slight wander
   useEffect(() => {
     let frame: number;
 
@@ -305,6 +305,30 @@ export default function AquariumPage() {
       setFish((prev) =>
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
+
+          // add small random wander to velocity
+          const wanderStrengthX = 0.01;
+          const wanderStrengthY = 0.008;
+
+          vx += (Math.random() - 0.5) * wanderStrengthX;
+          vy += (Math.random() - 0.5) * wanderStrengthY;
+
+          const minVx = 0.04;
+          const maxVx = 0.16;
+          const minVy = 0.02;
+          const maxVy = 0.1;
+
+          if (Math.abs(vx) < minVx) {
+            vx = (vx >= 0 ? 1 : -1) * minVx;
+          } else if (Math.abs(vx) > maxVx) {
+            vx = (vx >= 0 ? 1 : -1) * maxVx;
+          }
+
+          if (Math.abs(vy) < minVy) {
+            vy = (vy >= 0 ? 1 : -1) * minVy;
+          } else if (Math.abs(vy) > maxVy) {
+            vy = (vy >= 0 ? 1 : -1) * maxVy;
+          }
 
           x += vx;
           y += vy;
@@ -407,6 +431,14 @@ export default function AquariumPage() {
           }}
         >
           <div className="relative w-full h-full">
+            {/* Shadow fish layer (behind bubbles & main fish) */}
+            <div className="shadow-layer">
+              <div className="shadow-fish shadow-fish-1" />
+              <div className="shadow-fish shadow-fish-2" />
+              <div className="shadow-fish shadow-fish-3" />
+              <div className="shadow-fish shadow-fish-4" />
+            </div>
+
             {/* Bubble layer */}
             <div className="bubble-layer">
               <div className="bubble bubble-1" />
@@ -454,7 +486,7 @@ export default function AquariumPage() {
                     left: `${f.x}%`,
                     top: `${f.y}%`,
                     transform: "translate(-50%, -50%)",
-                    zIndex: 1,
+                    zIndex: 2,
                   }}
                 >
                   <div
@@ -466,7 +498,7 @@ export default function AquariumPage() {
                     <img
                       src={f.imageUrl}
                       alt={f.rarity + " Betta #" + f.tokenId.toString()}
-                      className="fish-img fish-swim-loop"
+                      className="fish-img"
                       draggable={false}
                     />
                   </div>
@@ -538,7 +570,7 @@ export default function AquariumPage() {
           transform: scaleX(-1);
         }
 
-        /* static size & glow; movement comes from global fish-swim animation */
+        /* static size & glow; movement comes ONLY from JS (x,y) */
         .fish-img {
           width: 4.5rem;
           height: 4.5rem;
@@ -576,13 +608,95 @@ export default function AquariumPage() {
           }
         }
 
-        /* BUBBLES: multiple slow rising bubbles at different timings */
-        .bubble-layer {
+        /* SHADOW FISH (behind everything) */
+        .shadow-layer {
           position: absolute;
           inset: 0;
           overflow: hidden;
           pointer-events: none;
           z-index: 0;
+        }
+
+        .shadow-fish {
+          position: absolute;
+          width: 60px;
+          height: 30px;
+          border-radius: 9999px;
+          background: radial-gradient(
+            circle at 30% 50%,
+            rgba(0, 0, 0, 0.38),
+            rgba(0, 0, 0, 0.85)
+          );
+          filter: blur(3px);
+          opacity: 0;
+          transform: translateX(-120%);
+          animation: shadowSwim 22s linear infinite;
+        }
+
+        .shadow-fish::after {
+          content: "";
+          position: absolute;
+          right: -18px;
+          top: 6px;
+          width: 22px;
+          height: 18px;
+          border-radius: 9999px;
+          background: radial-gradient(
+            circle at 30% 50%,
+            rgba(0, 0, 0, 0.4),
+            rgba(0, 0, 0, 0.9)
+          );
+        }
+
+        .shadow-fish-1 {
+          top: 32%;
+          animation-delay: 4s;
+        }
+
+        .shadow-fish-2 {
+          top: 55%;
+          animation-delay: 11s;
+          animation-direction: reverse;
+        }
+
+        .shadow-fish-3 {
+          top: 40%;
+          animation-delay: 18s;
+        }
+
+        .shadow-fish-4 {
+          top: 70%;
+          animation-delay: 25s;
+          animation-direction: reverse;
+        }
+
+        @keyframes shadowSwim {
+          0% {
+            transform: translateX(-120%);
+            opacity: 0;
+          }
+          10% {
+            opacity: 0.4;
+          }
+          50% {
+            opacity: 0.65;
+          }
+          90% {
+            opacity: 0.4;
+          }
+          100% {
+            transform: translateX(140%);
+            opacity: 0;
+          }
+        }
+
+        /* BUBBLES */
+        .bubble-layer {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+          z-index: 1;
         }
 
         .bubble {

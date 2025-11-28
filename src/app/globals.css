@@ -286,33 +286,3 @@ h6 {
     opacity: 0;
   }
 }
-
-/* ================================
-   FISH SWIM ANIMATION
-   - single, simple animation
-   - NO scale, NO rotate -> no zoom effect
-================================ */
-
-.fish-swim-loop {
-  animation: fish-swim 3.4s ease-in-out infinite;
-  transform-origin: 50% 50%;
-}
-
-/* simple up-down motion only */
-@keyframes fish-swim {
-  0% {
-    transform: translateY(0px);
-  }
-  25% {
-    transform: translateY(-8px);
-  }
-  50% {
-    transform: translateY(0px);
-  }
-  75% {
-    transform: translateY(6px);
-  }
-  100% {
-    transform: translateY(0px);
-  }
-}
