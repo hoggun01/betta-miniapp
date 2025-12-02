@@ -76,7 +76,7 @@ const RARITY_SPRITES: Record<Rarity, string> = {
 };
 
 // Feed cooldown config (client-side guard)
-const FEED_COOLDOWN_MS = 1 * 1 * 1000; // 1 hour
+const FEED_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 const LAST_FEED_STORAGE_KEY = "betta_last_feed_at_v1";
 
 function ipfsToHttp(uri: string): string {
