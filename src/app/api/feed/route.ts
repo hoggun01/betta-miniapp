@@ -1,4 +1,5 @@
 // src/app/api/feed/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import {
   getOrCreateProgress,
@@ -32,7 +33,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Optional: verify wallet owner via onchain nanti
+    // TODO (future): verify onchain that walletAddress owns tokenId
+
     const now = Date.now();
     const progress = getOrCreateProgress(tokenId, rarity);
     const maxLevel = getMaxLevelForRarity(rarity);
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Kalau sudah max level: cuma refresh cooldown
+    // If already max level: just refresh cooldown
     if (progress.level >= maxLevel) {
       progress.lastFeedAt = now;
       saveProgress(progress);
@@ -76,11 +78,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Tambah EXP
+    // Add EXP
     let level = progress.level;
     let exp = progress.exp + EXP_PER_FEED;
 
-    // Level up loop
+    // Level-up loop
     while (true) {
       const needed = expNeeded(level);
       if (exp >= needed && level < maxLevel) {
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Clamp kalau sudah max
+    // Clamp when reaching max level
     if (level >= maxLevel) {
       level = maxLevel;
       exp = Math.min(exp, expNeeded(maxLevel));
@@ -119,10 +121,14 @@ export async function POST(req: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (e) {
+  } catch (e: any) {
     console.error("FEED API error", e);
     return NextResponse.json(
-      { ok: false, error: "INTERNAL_ERROR" },
+      {
+        ok: false,
+        error: "INTERNAL_ERROR",
+        detail: e?.message || String(e),
+      },
       { status: 500 }
     );
   }
