@@ -40,8 +40,8 @@ type BattleStats = {
   str: number;
   def: number;
   agi: number;
-  crit: number; // in %
-  dodge: number; // in %
+  crit: number;
+  dodge: number;
 };
 
 const BETTA_CONTRACT_ADDRESS = process.env
@@ -203,128 +203,46 @@ function persistNextFeedAt(nextFeedAt: number | null) {
   }
 }
 
-// ✅ OFFICIAL STAT FORMULAS (from betta_full_rules_merged)
+// Basic stat formula for battle status
 function computeStats(rarity: Rarity, level: number): BattleStats {
-  if (level < 1) level = 1;
+  const rarityMultiplier = {
+    COMMON: { hp: 1.0, str: 1.0, def: 1.0, agi: 1.0 },
+    UNCOMMON: { hp: 1.1, str: 1.1, def: 1.05, agi: 1.05 },
+    RARE: { hp: 1.25, str: 1.25, def: 1.15, agi: 1.15 },
+    SPIRIT: { hp: 1.3, str: 1.3, def: 1.2, agi: 1.2 },
+    EPIC: { hp: 1.45, str: 1.45, def: 1.3, agi: 1.3 },
+    LEGENDARY: { hp: 1.6, str: 1.6, def: 1.4, agi: 1.4 },
+  }[rarity];
 
-  let hp = 0;
-  let str = 0;
-  let agi = 0;
-  let critPct = 0; // in %
-  let evasionStat = 0; // internal EVASION stat
+  const baseHp = 100;
+  const baseStr = 20;
+  const baseDef = 15;
+  const baseAgi = 10;
 
-  switch (rarity) {
-    case "COMMON": {
-      // STR = 6 × level
-      // HP  = 60 × level
-      str = 6 * level;
-      hp = 60 * level;
-      break;
-    }
-    case "UNCOMMON": {
-      // STR = 7 × level
-      // HP  = 70 × level
-      str = 7 * level;
-      hp = 70 * level;
-      break;
-    }
-    case "RARE": {
-      // STR  = 9 × level
-      // HP   = 75 × level
-      // AGI  = 0.4 × level
-      // CRIT = 0.2% × level
-      str = 9 * level;
-      hp = 75 * level;
-      agi = 0.4 * level;
-      critPct = 0.2 * level;
-      break;
-    }
-    case "SPIRIT": {
-      // STR     = 7 × level
-      // HP      = 65 × level
-      // AGI     = 0.3 × level
-      // CRIT    = 0.1% × level
-      // EVASION = 0.1% × level  (we store as EVASION_STAT)
-      str = 7 * level;
-      hp = 65 * level;
-      agi = 0.3 * level;
-      critPct = 0.1 * level;
-      evasionStat = 0.1 * level;
-      break;
-    }
-    case "EPIC": {
-      // STR  = 10 × level
-      // HP   = 80 × level
-      // AGI  = 0.6 × level
-      // CRIT = 0.3% × level
-      str = 10 * level;
-      hp = 80 * level;
-      agi = 0.6 * level;
-      critPct = 0.3 * level;
-      break;
-    }
-    case "LEGENDARY": {
-      // STR      = 12 × level
-      // HP       = 120 × level
-      // AGI      = 1.0 × level
-      // CRIT     = 0.5% × level
-      // EVASION  = 0.3 × level (EVASION_STAT)
-      str = 12 * level;
-      hp = 120 * level;
-      agi = 1.0 * level;
-      critPct = 0.5 * level;
-      evasionStat = 0.3 * level;
-      break;
-    }
-  }
+  const hp = Math.round((baseHp + level * 12) * rarityMultiplier.hp);
+  const str = Math.round((baseStr + level * 3) * rarityMultiplier.str);
+  const def = Math.round((baseDef + level * 2.5) * rarityMultiplier.def);
+  const agi = Math.round((baseAgi + level * 2) * rarityMultiplier.agi);
 
-  // DEF tidak ada di rules, kita derive saja dari HP (10% HP)
-  const def = Math.round(hp * 0.1);
+  const baseCrit = 3;
+  const baseDodge = 3;
 
-  // EVASION_TOTAL = 5% base + EVASION_STAT × 0.3% (0.003)
-  const BASE_EVASION = 0.05;
-  const evasionTotal = BASE_EVASION + evasionStat * 0.003;
-  const dodgePct = Math.max(0, Math.min(evasionTotal * 100, 95)); // clamp 0–95%
+  const rarityCritBonus = {
+    COMMON: 0,
+    UNCOMMON: 1,
+    RARE: 2,
+    SPIRIT: 3,
+    EPIC: 4,
+    LEGENDARY: 5,
+  }[rarity];
 
-  return {
-    hp: Math.round(hp),
-    str: Math.round(str),
-    def,
-    agi: Math.round(agi),
-    crit: critPct, // UI akan tampilkan dengan %
-    dodge: dodgePct,
-  };
-}
+  const crit = Math.min(50, baseCrit + level * 0.4 + rarityCritBonus);
+  const dodge = Math.min(
+    40,
+    baseDodge + level * 0.35 + Math.max(0, rarityCritBonus - 1)
+  );
 
-// ✅ API helper untuk load progress awal setelah halaman dibuka
-async function fetchProgressForFishes(
-  fishes: MovingFish[]
-): Promise<Record<string, FishProgress>> {
-  if (!fishes.length) return {};
-  try {
-    const res = await fetch("/api/progress", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fishes: fishes.map((f) => ({
-          tokenId: f.tokenId.toString(),
-          rarity: f.rarity,
-        })),
-      }),
-    });
-
-    if (!res.ok) {
-      console.warn("Failed to fetch initial progress", await res.text());
-      return {};
-    }
-
-    const data = await res.json();
-    if (!data?.ok || !data.progressByToken) return {};
-    return data.progressByToken as Record<string, FishProgress>;
-  } catch (err) {
-    console.error("fetchProgressForFishes error", err);
-    return {};
-  }
+  return { hp, str, def, agi, crit, dodge };
 }
 
 export default function AquariumPage() {
@@ -576,18 +494,8 @@ export default function AquariumPage() {
           if (found >= balanceNum || hitRateLimit) break;
         }
 
-        // ✅ Load EXP/level progress dari backend untuk semua ikan
-        let initialProgress: Record<string, FishProgress> = {};
-        if (fishes.length > 0) {
-          initialProgress = await fetchProgressForFishes(fishes);
-        }
-
         if (!cancelled) {
           setFish(fishes);
-
-          if (Object.keys(initialProgress).length > 0) {
-            setProgressByToken(initialProgress);
-          }
 
           if (balanceNum > 0 && fishes.length === 0 && hitRateLimit) {
             setError(
@@ -1177,8 +1085,279 @@ export default function AquariumPage() {
         )}
       </div>
 
-      {/* CSS sama seperti sebelumnya, tidak aku ulang semua di sini biar chat nggak super panjang.
-          Kamu bisa pakai CSS global yang sudah ada, karena kita tidak mengubah class-classnya. */}
+      <style jsx global>{`
+        .neon-frame {
+          border: 3px solid rgba(56, 189, 248, 0.85);
+          box-shadow:
+            0 0 12px rgba(56, 189, 248, 0.9),
+            0 0 25px rgba(56, 189, 248, 0.6),
+            0 0 40px rgba(56, 189, 248, 0.45);
+          backdrop-filter: blur(1px);
+        }
+
+        .fish-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .fish-facing-right {
+          transform: scaleX(1);
+        }
+
+        .fish-facing-left {
+          transform: scaleX(-1);
+        }
+
+        .fish-img {
+          width: 4.5rem;
+          height: 4.5rem;
+          object-fit: contain;
+          image-rendering: auto;
+        }
+
+        .exp-float {
+          position: absolute;
+          top: -16px;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 10px;
+          font-weight: 700;
+          color: #facc15;
+          text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+          opacity: 0;
+          animation: expFloat 1s ease-out forwards;
+          pointer-events: none;
+        }
+
+        @keyframes expFloat {
+          0% {
+            transform: translate(-50%, 4px);
+            opacity: 0;
+          }
+          20% {
+            opacity: 1;
+          }
+          100% {
+            transform: translate(-50%, -18px);
+            opacity: 0;
+          }
+        }
+
+        .rarity-common .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(148, 163, 184, 0.9))
+            drop-shadow(0 0 6px rgba(148, 163, 184, 0.6));
+        }
+
+        .rarity-uncommon .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(52, 211, 153, 0.95))
+            drop-shadow(0 0 7px rgba(52, 211, 153, 0.7));
+        }
+
+        .rarity-rare .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(168, 85, 247, 0.95))
+            drop-shadow(0 0 8px rgba(168, 85, 247, 0.75));
+        }
+
+        .rarity-epic .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(239, 68, 68, 0.95))
+            drop-shadow(0 0 9px rgba(248, 113, 113, 0.8));
+        }
+
+        .rarity-legendary .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(255, 255, 255, 0.9))
+            drop-shadow(0 0 8px rgba(236, 72, 153, 0.85))
+            drop-shadow(0 0 10px rgba(250, 204, 21, 0.85))
+            drop-shadow(0 0 12px rgba(59, 130, 246, 0.85));
+        }
+
+        .rarity-spirit .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(129, 140, 248, 0.95))
+            drop-shadow(0 0 9px rgba(56, 189, 248, 0.8));
+        }
+
+        .feed-mode .fish-img {
+          filter:
+            drop-shadow(0 0 3px rgba(250, 250, 250, 0.95))
+            drop-shadow(0 0 10px rgba(250, 204, 21, 0.95));
+        }
+
+        .pellet {
+          position: absolute;
+          width: 10px;
+          height: 10px;
+          border-radius: 9999px;
+          background: #facc15;
+          box-shadow: 0 0 10px rgba(250, 204, 21, 0.9);
+          border: 1px solid rgba(250, 250, 210, 0.8);
+          opacity: 0;
+          animation: pelletDrop 1.6s ease-out forwards;
+        }
+
+        @keyframes pelletDrop {
+          0% {
+            transform: translateY(-10px);
+            opacity: 0;
+          }
+          20% {
+            opacity: 1;
+          }
+          80% {
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(130px);
+            opacity: 0;
+          }
+        }
+
+        .shadow-layer {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .shadow-fish {
+          position: absolute;
+          width: 130px;
+          opacity: 0;
+          filter: blur(3px);
+        }
+
+        .shadow-fish-ltr {
+          top: 50%;
+          animation: shadowSwimLeftToRight 60s linear infinite;
+          animation-delay: 12s;
+        }
+
+        @keyframes shadowSwimLeftToRight {
+          0% {
+            transform: translateX(-25%) scaleX(1);
+            opacity: 0;
+          }
+          10% {
+            opacity: 0.25;
+          }
+          50% {
+            opacity: 0.55;
+          }
+          90% {
+            opacity: 0.25;
+          }
+          100% {
+            transform: translateX(115%) scaleX(1);
+            opacity: 0;
+          }
+        }
+
+        .bubble-layer {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+          z-index: 1;
+        }
+
+        .bubble {
+          position: absolute;
+          bottom: -40px;
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          border: 2px solid rgba(191, 219, 254, 0.75);
+          background: rgba(191, 219, 254, 0.18);
+          opacity: 0;
+          animation-name: bubbleUp;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+
+        .bubble-1 {
+          left: 12%;
+          animation-duration: 9s;
+          animation-delay: 1s;
+        }
+
+        .bubble-2 {
+          left: 22%;
+          animation-duration: 11s;
+          animation-delay: 4s;
+        }
+
+        .bubble-3 {
+          left: 32%;
+          animation-duration: 8s;
+          animation-delay: 7s;
+        }
+
+        .bubble-4 {
+          left: 45%;
+          animation-duration: 10s;
+          animation-delay: 2s;
+        }
+
+        .bubble-5 {
+          left: 55%;
+          animation-duration: 12s;
+          animation-delay: 6s;
+        }
+
+        .bubble-6 {
+          left: 65%;
+          animation-duration: 9.5s;
+          animation-delay: 3s;
+        }
+
+        .bubble-7 {
+          left: 75%;
+          animation-duration: 7.5s;
+          animation-delay: 8s;
+        }
+
+        .bubble-8 {
+          left: 82%;
+          animation-duration: 10.5s;
+          animation-delay: 5s;
+        }
+
+        .bubble-9 {
+          left: 18%;
+          animation-duration: 8.5s;
+          animation-delay: 9s;
+        }
+
+        .bubble-10 {
+          left: 50%;
+          animation-duration: 7s;
+          animation-delay: 11s;
+        }
+
+        @keyframes bubbleUp {
+          0% {
+            transform: translateY(0) scale(0.7);
+            opacity: 0;
+          }
+          12% {
+            opacity: 0.9;
+          }
+          80% {
+            opacity: 0.9;
+          }
+          100% {
+            transform: translateY(-130vh) scale(1);
+            opacity: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }
