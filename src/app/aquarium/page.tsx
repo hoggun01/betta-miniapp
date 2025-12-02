@@ -20,8 +20,8 @@ type FishToken = {
 };
 
 type MovingFish = FishToken & {
-  x: number; // 0-100 (horizontal, %)
-  y: number; // 0-100 (vertical, %)
+  x: number;
+  y: number;
   vx: number;
   vy: number;
   facing: "left" | "right";
@@ -33,7 +33,6 @@ const BETTA_CONTRACT_ADDRESS = process.env
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
 
-// Minimal ABI: nextTokenId, balanceOf, ownerOf, tokenURI
 const BETTA_ABI = [
   {
     type: "function",
@@ -65,19 +64,28 @@ const BETTA_ABI = [
   },
 ] as const;
 
-// Map rarity to local PNG in /public
 const RARITY_SPRITES: Record<Rarity, string> = {
   COMMON: "/common.png",
   UNCOMMON: "/uncommon.png",
   RARE: "/rare.png",
   EPIC: "/epic.png",
   LEGENDARY: "/legendary.png",
-  SPIRIT: "/spirit.png", // to be prepared later when the file exists
+  SPIRIT: "/spirit.png",
 };
 
-// Feed cooldown config (client-side guard)
-const FEED_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+/* ============================================================
+   ✨ ENV COOLDOWN PATCH (AMAN & VALIDATION)
+   ============================================================ */
+const FEED_COOLDOWN_MIN = (() => {
+  const raw = process.env.NEXT_PUBLIC_FEED_COOLDOWN;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 60;
+})();
+
+const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
+
 const LAST_FEED_STORAGE_KEY = "betta_last_feed_at_v1";
+/* ============================================================ */
 
 function ipfsToHttp(uri: string): string {
   if (!uri) return uri;
@@ -114,13 +122,7 @@ function detectRarityFromMetadata(meta: any): Rarity {
   return "COMMON";
 }
 
-function createInitialMotion(index: number): {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  facing: "left" | "right";
-} {
+function createInitialMotion(index: number) {
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
@@ -137,7 +139,6 @@ function createInitialMotion(index: number): {
   };
 }
 
-// Read last feed time from localStorage and compute nextFeedAt
 function loadNextFeedFromStorage(): number | null {
   if (typeof window === "undefined") return null;
   try {
@@ -148,13 +149,11 @@ function loadNextFeedFromStorage(): number | null {
     const nextAt = last + FEED_COOLDOWN_MS;
     if (nextAt <= Date.now()) return null;
     return nextAt;
-  } catch (err) {
-    console.error("Failed to read last feed time from storage", err);
+  } catch {
     return null;
   }
 }
 
-// Persist nextFeedAt into localStorage (as lastFeedAt)
 function persistNextFeedAt(nextFeedAt: number | null) {
   if (typeof window === "undefined") return;
   try {
@@ -164,9 +163,7 @@ function persistNextFeedAt(nextFeedAt: number | null) {
     }
     const lastAt = nextFeedAt - FEED_COOLDOWN_MS;
     window.localStorage.setItem(LAST_FEED_STORAGE_KEY, String(lastAt));
-  } catch (err) {
-    console.error("Failed to save last feed time to storage", err);
-  }
+  } catch {}
 }
 
 export default function AquariumPage() {
@@ -178,7 +175,6 @@ export default function AquariumPage() {
   const [error, setError] = useState<string | null>(null);
   const [isFeeding, setIsFeeding] = useState(false);
 
-  // FEED cooldown UI
   const [nextFeedAt, setNextFeedAt] = useState<number | null>(null);
   const [cooldownLabel, setCooldownLabel] = useState<string | null>(null);
   const [isFeedLoading, setIsFeedLoading] = useState(false);
@@ -204,9 +200,7 @@ export default function AquariumPage() {
         const ctx: any = await sdk.context;
         if (cancelled) return;
         const ctxFid = ctx?.user?.fid as number | undefined;
-        if (ctxFid) {
-          setFid(ctxFid);
-        }
+        if (ctxFid) setFid(ctxFid);
 
         if (!BETTA_CONTRACT_ADDRESS) {
           setError("Betta contract address is not configured.");
@@ -281,7 +275,6 @@ export default function AquariumPage() {
 
         const maxTokenId = nextTokenIdValue - ONE;
 
-        // Safety cap: do not scan more than 500 earliest tokens
         const HARD_CAP = BigInt(500);
         const effectiveMax = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
@@ -302,14 +295,11 @@ export default function AquariumPage() {
         const lowerAddress = address.toLowerCase();
 
         for (let i = 0; i < tokenIds.length; i += BATCH_SIZE) {
-          if (Date.now() - scanStartedAt > MAX_SCAN_MS) {
-            console.warn("Aquarium scan timeout; stopping early");
-            break;
-          }
+          if (Date.now() - scanStartedAt > MAX_SCAN_MS) break;
 
           const batchIds = tokenIds.slice(i, i + BATCH_SIZE);
 
-          let ownerResults: any[]; // multicall ownerOf
+          let ownerResults: any[];
           try {
             ownerResults = await client.multicall({
               contracts: batchIds.map((id) => ({
@@ -320,17 +310,7 @@ export default function AquariumPage() {
               })),
               allowFailure: true,
             });
-          } catch (err: any) {
-            const code = err?.code;
-            const message: string = err?.shortMessage || err?.message || "";
-
-            if (code === -32016 || message.toLowerCase().includes("rate limit")) {
-              console.warn("RPC rate limit during ownerOf multicall", err);
-              hitRateLimit = true;
-              break;
-            }
-
-            console.error("Error in ownerOf multicall", err);
+          } catch {
             break;
           }
 
@@ -348,7 +328,7 @@ export default function AquariumPage() {
             continue;
           }
 
-          let uriResults: any[];
+          let uriResults: any[]; 
           try {
             uriResults = await client.multicall({
               contracts: myTokenIds.map((id) => ({
@@ -359,17 +339,7 @@ export default function AquariumPage() {
               })),
               allowFailure: true,
             });
-          } catch (err: any) {
-            const code = err?.code;
-            const message: string = err?.shortMessage || err?.message || "";
-
-            if (code === -32016 || message.toLowerCase().includes("rate limit")) {
-              console.warn("RPC rate limit during tokenURI multicall", err);
-              hitRateLimit = true;
-              break;
-            }
-
-            console.error("Error in tokenURI multicall", err);
+          } catch {
             break;
           }
 
@@ -377,9 +347,8 @@ export default function AquariumPage() {
             const tokenId = myTokenIds[j];
             const uriRes = uriResults[j];
 
-            if (!uriRes || uriRes.status !== "success" || !uriRes.result) {
+            if (!uriRes || uriRes.status !== "success" || !uriRes.result)
               continue;
-            }
 
             const rawUri = uriRes.result as string;
 
@@ -394,61 +363,45 @@ export default function AquariumPage() {
               const motion = createInitialMotion(index++);
 
               fishes.push({
-                tokenId,
-                rarity,
-                imageUrl: spriteUrl,
-                ...motion,
-              });
+              tokenId,
+              rarity,
+              imageUrl: spriteUrl,
+              x: motion.x,
+              y: motion.y,
+              vx: motion.vx,
+              vy: motion.vy,
+              facing: motion.facing as "left" | "right",
+            });
+
 
               found += 1;
-              if (found >= balanceNum) {
-                break;
-              }
-            } catch (metaError) {
-              console.error(
-                "Error loading metadata for token",
-                tokenId.toString(),
-                metaError
-              );
-            }
+              if (found >= balanceNum) break;
+            } catch {}
           }
 
-          if (found >= balanceNum || hitRateLimit) {
-            break;
-          }
+          if (found >= balanceNum || hitRateLimit) break;
         }
 
         if (!cancelled) {
           setFish(fishes);
-
-          if (balanceNum > 0 && fishes.length === 0 && hitRateLimit) {
-            setError(
-              "We hit an RPC rate limit while loading your fish. Please try reopening your aquarium in a moment."
-            );
-          }
-
           setIsLoading(false);
         }
 
         await sdk.actions.ready();
-      } catch (e) {
-        console.error(e);
+      } catch {
         if (!cancelled) {
           setError("Something went wrong while loading your aquarium.");
           setIsLoading(false);
         }
-        await sdk.actions.ready();
       }
     }
 
     bootstrap();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Load feed cooldown from localStorage on mount
   useEffect(() => {
     const storedNext = loadNextFeedFromStorage();
     if (storedNext) {
@@ -456,7 +409,6 @@ export default function AquariumPage() {
     }
   }, []);
 
-  // Random movement for all fish
   useEffect(() => {
     let frame: number;
 
@@ -465,52 +417,42 @@ export default function AquariumPage() {
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
-          const wanderStrengthX = 0.01;
-          const wanderStrengthY = 0.008;
-
-          vx += (Math.random() - 0.5) * wanderStrengthX;
-          vy += (Math.random() - 0.5) * wanderStrengthY;
+          vx += (Math.random() - 0.5) * 0.01;
+          vy += (Math.random() - 0.5) * 0.008;
 
           const minVx = 0.04;
           const maxVx = 0.16;
           const minVy = 0.02;
           const maxVy = 0.1;
 
-          if (Math.abs(vx) < minVx) {
+          if (Math.abs(vx) < minVx)
             vx = (vx >= 0 ? 1 : -1) * minVx;
-          } else if (Math.abs(vx) > maxVx) {
+          else if (Math.abs(vx) > maxVx)
             vx = (vx >= 0 ? 1 : -1) * maxVx;
-          }
 
-          if (Math.abs(vy) < minVy) {
+          if (Math.abs(vy) < minVy)
             vy = (vy >= 0 ? 1 : -1) * minVy;
-          } else if (Math.abs(vy) > maxVy) {
+          else if (Math.abs(vy) > maxVy)
             vy = (vy >= 0 ? 1 : -1) * maxVy;
-          }
 
           x += vx;
           y += vy;
 
-          const minX = 10;
-          const maxX = 90;
-          const minY = 18;
-          const maxY = 82;
-
-          if (x < minX) {
-            x = minX;
+          if (x < 10) {
+            x = 10;
             vx = Math.abs(vx);
             facing = "right";
-          } else if (x > maxX) {
-            x = maxX;
+          } else if (x > 90) {
+            x = 90;
             vx = -Math.abs(vx);
             facing = "left";
           }
 
-          if (y < minY) {
-            y = minY;
+          if (y < 18) {
+            y = 18;
             vy = Math.abs(vy);
-          } else if (y > maxY) {
-            y = maxY;
+          } else if (y > 82) {
+            y = 82;
             vy = -Math.abs(vy);
           }
 
@@ -532,14 +474,12 @@ export default function AquariumPage() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  // Turn off FEED animation after 1.5s
   useEffect(() => {
     if (!isFeeding) return;
     const id = setTimeout(() => setIsFeeding(false), 1500);
     return () => clearTimeout(id);
   }, [isFeeding]);
 
-  // Cooldown countdown MM:SS
   useEffect(() => {
     if (!nextFeedAt) {
       setCooldownLabel(null);
@@ -559,9 +499,11 @@ export default function AquariumPage() {
       const minutes = Math.floor(totalSec / 60);
       const seconds = totalSec % 60;
 
-      const mm = minutes.toString().padStart(2, "0");
-      const ss = seconds.toString().padStart(2, "0");
-      setCooldownLabel(`${mm}:${ss}`);
+      setCooldownLabel(
+        `${minutes.toString().padStart(2, "0")}:${seconds
+          .toString()
+          .padStart(2, "0")}`
+      );
     };
 
     update();
@@ -584,16 +526,14 @@ export default function AquariumPage() {
     return counts;
   }, [fish]);
 
-  // FEED button -> call /api/feed (guarded by local cooldown)
   const handleFeedClick = async () => {
     if (!fish.length || !walletAddress || isFeedLoading) return;
 
-    // Local cooldown guard: do not call API if still on cooldown
     if (nextFeedAt && nextFeedAt > Date.now()) {
       return;
     }
 
-    const firstFish = fish[0]; // for now: feed the first fish
+    const firstFish = fish[0];
     setIsFeedLoading(true);
 
     try {
@@ -610,26 +550,21 @@ export default function AquariumPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.error === "ON_COOLDOWN" && typeof data.remainingMs === "number") {
+        if (data.error === "ON_COOLDOWN" && data.remainingMs) {
           const endAt = Date.now() + data.remainingMs;
           setNextFeedAt(endAt);
           persistNextFeedAt(endAt);
         }
-        console.warn("Feed error:", data);
         return;
       }
 
-      // success -> start full cooldown (from API, fallback to FEED_COOLDOWN_MS)
       let endAt: number | null = null;
-      if (typeof data.cooldownMs === "number") {
-        endAt = Date.now() + data.cooldownMs;
-      } else if (typeof data.remainingMs === "number") {
+      if (data.cooldownMs) endAt = Date.now() + data.cooldownMs;
+      else if (data.remainingMs)
         endAt = Date.now() + data.remainingMs;
-      } else {
-        endAt = Date.now() + FEED_COOLDOWN_MS;
-      }
+      else endAt = Date.now() + FEED_COOLDOWN_MS;
 
-      if (endAt !== null) {
+      if (endAt) {
         setNextFeedAt(endAt);
         persistNextFeedAt(endAt);
       }
@@ -642,13 +577,8 @@ export default function AquariumPage() {
     }
   };
 
-  const handleMyFishClick = () => {
-    console.log("MY FISH clicked");
-  };
-
-  const handleBattleClick = () => {
-    console.log("BATTLE clicked");
-  };
+  const handleMyFishClick = () => {};
+  const handleBattleClick = () => {};
 
   const isOnCooldown = nextFeedAt !== null && nextFeedAt > Date.now();
 
@@ -795,6 +725,7 @@ export default function AquariumPage() {
             )}
 
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-transparent" />
+
             <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-2 text-[10px] text-slate-200">
               <div className="flex items-center justify-between gap-2">
                 <span className="uppercase tracking-[0.16em] text-slate-200 drop-shadow">
@@ -804,6 +735,7 @@ export default function AquariumPage() {
                   {fish.length} fish total
                 </span>
               </div>
+
               <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
                 <Badge label="Common" value={raritySummary.COMMON} />
                 <Badge label="Uncommon" value={raritySummary.UNCOMMON} />
@@ -832,6 +764,7 @@ export default function AquariumPage() {
             >
               FEED
             </button>
+
             <button
               type="button"
               onClick={handleMyFishClick}
@@ -840,6 +773,7 @@ export default function AquariumPage() {
             >
               MY FISH
             </button>
+
             <button
               type="button"
               onClick={handleBattleClick}
@@ -858,6 +792,7 @@ export default function AquariumPage() {
         </div>
       </div>
 
+      {/* ============================ GLOBAL CSS ============================ */}
       <style jsx global>{`
         .neon-frame {
           border: 3px solid rgba(56, 189, 248, 0.85);
@@ -888,10 +823,8 @@ export default function AquariumPage() {
           height: 4.5rem;
           object-fit: contain;
           image-rendering: auto;
-          transform: none;
         }
 
-        /* outline glow per rarity (around fish edges) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(148, 163, 184, 0.9))
@@ -1033,55 +966,46 @@ export default function AquariumPage() {
           animation-duration: 9s;
           animation-delay: 1s;
         }
-
         .bubble-2 {
           left: 22%;
           animation-duration: 11s;
           animation-delay: 4s;
         }
-
         .bubble-3 {
           left: 32%;
           animation-duration: 8s;
           animation-delay: 7s;
         }
-
         .bubble-4 {
           left: 45%;
           animation-duration: 10s;
           animation-delay: 2s;
         }
-
         .bubble-5 {
           left: 55%;
           animation-duration: 12s;
           animation-delay: 6s;
         }
-
         .bubble-6 {
           left: 65%;
           animation-duration: 9.5s;
           animation-delay: 3s;
         }
-
         .bubble-7 {
           left: 75%;
           animation-duration: 7.5s;
           animation-delay: 8s;
         }
-
         .bubble-8 {
           left: 82%;
           animation-duration: 10.5s;
           animation-delay: 5s;
         }
-
         .bubble-9 {
           left: 18%;
           animation-duration: 8.5s;
           animation-delay: 9s;
         }
-
         .bubble-10 {
           left: 50%;
           animation-duration: 7s;
@@ -1118,17 +1042,11 @@ function Badge({ label, value }: BadgeProps) {
   let dotColorClass = "bg-slate-400";
 
   const lower = label.toLowerCase();
-  if (lower === "uncommon") {
-    dotColorClass = "bg-emerald-400";
-  } else if (lower === "rare") {
-    dotColorClass = "bg-sky-400";
-  } else if (lower === "epic") {
-    dotColorClass = "bg-amber-400";
-  } else if (lower === "legendary") {
-    dotColorClass = "bg-red-500";
-  } else if (lower === "spirit") {
-    dotColorClass = "bg-indigo-400";
-  }
+  if (lower === "uncommon") dotColorClass = "bg-emerald-400";
+  else if (lower === "rare") dotColorClass = "bg-sky-400";
+  else if (lower === "epic") dotColorClass = "bg-amber-400";
+  else if (lower === "legendary") dotColorClass = "bg-red-500";
+  else if (lower === "spirit") dotColorClass = "bg-indigo-400";
 
   return (
     <div className="inline-flex items-center gap-1 rounded-full bg-slate-900/70 px-2.5 py-1 border border-slate-700/70">
