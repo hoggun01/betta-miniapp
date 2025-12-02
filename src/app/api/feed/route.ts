@@ -5,8 +5,8 @@ import {
   saveProgress,
   getMaxLevelForRarity,
   expNeeded,
-  Rarity,
 } from "@/lib/fishProgressStore";
+import type { Rarity } from "@/lib/fishProgressStore";
 
 const COOLDOWN_MS = 3600 * 1000; // 1 jam
 const EXP_PER_FEED = 10;
@@ -32,8 +32,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // TODO: optional - verify wallet is real owner of tokenId via onchain
-
+    // Optional: verify wallet owner via onchain nanti
     const now = Date.now();
     const progress = getOrCreateProgress(tokenId, rarity);
     const maxLevel = getMaxLevelForRarity(rarity);
@@ -56,7 +55,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Kalau sudah max level, FEED hanya update cooldown (tidak nambah exp)
+    // Kalau sudah max level: cuma refresh cooldown
     if (progress.level >= maxLevel) {
       progress.lastFeedAt = now;
       saveProgress(progress);
@@ -92,10 +91,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Clamp exp kalau level sudah max
+    // Clamp kalau sudah max
     if (level >= maxLevel) {
       level = maxLevel;
-      exp = Math.min(exp, expNeeded(maxLevel)); // hanya kosmetik
+      exp = Math.min(exp, expNeeded(maxLevel));
     }
 
     progress.level = level;
@@ -104,8 +103,7 @@ export async function POST(req: NextRequest) {
 
     saveProgress(progress);
 
-    const expNeededNext =
-      level >= maxLevel ? 0 : expNeeded(level);
+    const expNeededNext = level >= maxLevel ? 0 : expNeeded(level);
 
     return NextResponse.json(
       {
