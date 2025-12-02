@@ -5,13 +5,7 @@ import { sdk } from "@farcaster/miniapp-sdk";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
-type Rarity =
-  | "COMMON"
-  | "UNCOMMON"
-  | "RARE"
-  | "EPIC"
-  | "LEGENDARY"
-  | "SPIRIT";
+type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
 
 type FishToken = {
   tokenId: bigint;
@@ -95,17 +89,14 @@ const RARITY_SPRITES: Record<Rarity, string> = {
 // EXP per feed (must match backend)
 const EXP_PER_FEED = 20;
 
-// Feed cooldown (client-side) using ENV (minutes)
-const FEED_COOLDOWN_MIN = (() => {
-  const raw = process.env.NEXT_PUBLIC_FEED_COOLDOWN;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 1;
-})();
+// ✅ FIXED: feed cooldown 30 menit (bisa kamu ubah nanti di sini)
+const FEED_COOLDOWN_MIN = 30;
+const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
 
-const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 1 * 1000;
-
+// LocalStorage key untuk cooldown client-side
 const LAST_FEED_STORAGE_KEY = "betta_last_feed_at_v1";
 
+// Max level per rarity (harus sama dengan backend)
 const MAX_LEVEL_BY_RARITY: Record<Rarity, number> = {
   COMMON: 15,
   UNCOMMON: 20,
@@ -203,7 +194,7 @@ function persistNextFeedAt(nextFeedAt: number | null) {
   }
 }
 
-// Basic stat formula for battle status (sementara untuk display)
+// Basic stat formula for battle status
 function computeStats(rarity: Rarity, level: number): BattleStats {
   const rarityMultiplier = {
     COMMON: { hp: 1.0, str: 1.0, def: 1.0, agi: 1.0 },
@@ -245,7 +236,7 @@ function computeStats(rarity: Rarity, level: number): BattleStats {
   return { hp, str, def, agi, crit, dodge };
 }
 
-// 🔹 PATCH: helper untuk load progress semua ikan dari backend
+// 🔹 Load progress dari backend untuk semua ikan
 async function fetchProgressForFishes(
   fishes: MovingFish[]
 ): Promise<Record<string, FishProgress>> {
@@ -256,7 +247,7 @@ async function fetchProgressForFishes(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        items: fishes.map((f) => ({
+        fishes: fishes.map((f) => ({
           tokenId: f.tokenId.toString(),
           rarity: f.rarity,
         })),
@@ -270,25 +261,11 @@ async function fetchProgressForFishes(
 
     const data = await res.json();
 
-    if (!data || !data.ok || !Array.isArray(data.progress)) {
+    if (!data || !data.ok || !data.progressByToken) {
       return {};
     }
 
-    const map: Record<string, FishProgress> = {};
-
-    for (const row of data.progress as any[]) {
-      if (typeof row.tokenId !== "string") continue;
-
-      map[row.tokenId] = {
-        level: typeof row.level === "number" ? row.level : 1,
-        exp: typeof row.exp === "number" ? row.exp : 0,
-        expNeededNext:
-          typeof row.expNeededNext === "number" ? row.expNeededNext : 0,
-        isMax: typeof row.isMax === "boolean" ? row.isMax : false,
-      };
-    }
-
-    return map;
+    return data.progressByToken as Record<string, FishProgress>;
   } catch (err) {
     console.error("fetchProgressForFishes error", err);
     return {};
@@ -544,7 +521,7 @@ export default function AquariumPage() {
           if (found >= balanceNum || hitRateLimit) break;
         }
 
-        // 🔹 BARU: load progress awal untuk semua ikan dari backend
+        // 🔹 Load progress awal dari backend
         let initialProgress: Record<string, FishProgress> = {};
         if (fishes.length > 0) {
           initialProgress = await fetchProgressForFishes(fishes);
@@ -932,7 +909,7 @@ export default function AquariumPage() {
                       />
                       {expGain !== null &&
                         expGainFishId === f.tokenId.toString() && (
-                          <div className="exp-float">+{expGain} EXP</div>
+                          <div className="exp-float">+{EXP_PER_FEED} EXP</div>
                         )}
                     </div>
                   </div>
