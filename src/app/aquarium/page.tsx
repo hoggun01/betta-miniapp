@@ -203,7 +203,7 @@ function persistNextFeedAt(nextFeedAt: number | null) {
   }
 }
 
-// Basic stat formula for battle status
+// Basic stat formula for battle status (sementara untuk display)
 function computeStats(rarity: Rarity, level: number): BattleStats {
   const rarityMultiplier = {
     COMMON: { hp: 1.0, str: 1.0, def: 1.0, agi: 1.0 },
@@ -243,6 +243,42 @@ function computeStats(rarity: Rarity, level: number): BattleStats {
   );
 
   return { hp, str, def, agi, crit, dodge };
+}
+
+// 🔹 BARU: helper untuk load progress semua ikan dari backend
+async function fetchProgressForFishes(
+  fishes: MovingFish[]
+): Promise<Record<string, FishProgress>> {
+  try {
+    if (!fishes.length) return {};
+
+    const res = await fetch("/api/progress", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fishes: fishes.map((f) => ({
+          tokenId: f.tokenId.toString(),
+          rarity: f.rarity,
+        })),
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn("Failed to fetch progress, status:", res.status);
+      return {};
+    }
+
+    const data = await res.json();
+
+    if (!data || !data.ok || !data.progressByToken) {
+      return {};
+    }
+
+    return data.progressByToken as Record<string, FishProgress>;
+  } catch (err) {
+    console.error("fetchProgressForFishes error", err);
+    return {};
+  }
 }
 
 export default function AquariumPage() {
@@ -494,8 +530,18 @@ export default function AquariumPage() {
           if (found >= balanceNum || hitRateLimit) break;
         }
 
+        // 🔹 BARU: load progress awal untuk semua ikan dari backend
+        let initialProgress: Record<string, FishProgress> = {};
+        if (fishes.length > 0) {
+          initialProgress = await fetchProgressForFishes(fishes);
+        }
+
         if (!cancelled) {
           setFish(fishes);
+
+          if (Object.keys(initialProgress).length > 0) {
+            setProgressByToken(initialProgress);
+          }
 
           if (balanceNum > 0 && fishes.length === 0 && hitRateLimit) {
             setError(
