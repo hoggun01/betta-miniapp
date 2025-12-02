@@ -1,18 +1,8 @@
-import { NextResponse } from "next/server";
-import fs from "fs";
+import { NextRequest, NextResponse } from "next/server";
+import fs from "fs/promises";
 import path from "path";
 
 type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
-
-type DbRecord = {
-  level: number;
-  exp: number;
-  lastFedAt: number;
-};
-
-type DbShape = {
-  [tokenId: string]: DbRecord;
-};
 
 type FishProgress = {
   level: number;
@@ -21,10 +11,23 @@ type FishProgress = {
   isMax: boolean;
 };
 
+type RawDbRecord = {
+  level: number;
+  exp: number;
+  lastFeedAt?: number;
+  rarity?: Rarity;
+};
+
+type DbShape = Record<string, RawDbRecord>;
+
+const DB_PATH = path.join(process.cwd(), "database-fish.json");
+
+// EXP per feed sesuai rules
 const EXP_PER_FEED = 20;
 
-// ? FIXED: cooldown 30 menit
-const FEED_COOLDOWN_MS = 30 * 60 * 1000;
+// Cooldown feed: FIX 30 menit (bukan dari .env)
+const FEED_COOLDOWN_MIN = 30;
+const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
 
 const MAX_LEVEL_BY_RARITY: Record<Rarity, number> = {
   COMMON: 15,
@@ -35,167 +38,153 @@ const MAX_LEVEL_BY_RARITY: Record<Rarity, number> = {
   LEGENDARY: 50,
 };
 
-const DB_PATH = path.join(process.cwd(), "data", "betta-progress.json");
+// Rumus resmi: 100 + (level-1) * 40 (semua rarity, beda cuma max level)
+function expNeededForLevel(rarity: Rarity, level: number): number {
+  const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
+  if (level >= maxLevel) return 0;
 
-function ensureDbFile() {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({}), "utf8");
-  }
+  const safeLevel = Math.max(1, Math.min(level, maxLevel));
+  return 100 + (safeLevel - 1) * 40;
 }
 
-function loadDb(): DbShape {
+function applyExpGain(
+  rarity: Rarity,
+  currentLevel: number,
+  currentExp: number,
+  gain: number
+): FishProgress {
+  const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
+  let level = Math.max(1, Math.min(currentLevel || 1, maxLevel));
+  let exp = Math.max(0, currentExp || 0);
+  let remainingGain = gain;
+
+  while (remainingGain > 0 && level < maxLevel) {
+    const needed = expNeededForLevel(rarity, level);
+    if (needed <= 0) {
+      level = maxLevel;
+      exp = 0;
+      break;
+    }
+
+    const missing = needed - exp;
+
+    if (remainingGain < missing) {
+      exp += remainingGain;
+      remainingGain = 0;
+      break;
+    }
+
+    // Naik level
+    remainingGain -= missing;
+    level += 1;
+    exp = 0;
+  }
+
+  const expNeededNext = expNeededForLevel(rarity, level);
+  const isMax = level >= maxLevel || expNeededNext === 0;
+
+  return {
+    level,
+    exp: isMax ? 0 : exp,
+    expNeededNext: isMax ? 0 : expNeededNext,
+    isMax,
+  };
+}
+
+async function loadDb(): Promise<DbShape> {
   try {
-    ensureDbFile();
-    const raw = fs.readFileSync(DB_PATH, "utf8");
-    return raw ? (JSON.parse(raw) as DbShape) : {};
-  } catch (err) {
-    console.error("Failed to load db file", err);
+    const raw = await fs.readFile(DB_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as DbShape;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      // Belum ada DB ? anggap kosong
+      return {};
+    }
+    console.error("[feed] Failed to read DB:", err);
     return {};
   }
 }
 
-function saveDb(db: DbShape) {
+async function saveDb(db: DbShape): Promise<void> {
   try {
-    ensureDbFile();
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf8");
+    await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf8");
   } catch (err) {
-    console.error("Failed to save db file", err);
+    console.error("[feed] Failed to write DB:", err);
   }
 }
 
-// Rumus EXP: base 100, +40 tiap level berikutnya
-function expNeededForLevel(rarity: Rarity, level: number): number {
-  const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
-  if (level >= maxLevel) return 0;
-  const base = 100;
-  const increment = 40;
-  return base + (level - 1) * increment;
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const tokenId = String(body.tokenId ?? "").trim();
-    const rarity = String(body.rarity ?? "").toUpperCase() as Rarity;
-    const walletAddress = String(body.walletAddress ?? "").toLowerCase();
+    const tokenIdRaw = body?.tokenId;
+    const rarity = body?.rarity as Rarity | undefined;
+    const walletAddress = body?.walletAddress as string | undefined;
 
-    if (!tokenId || !walletAddress) {
+    if (!tokenIdRaw || !rarity || !walletAddress) {
       return NextResponse.json(
-        { ok: false, error: "MISSING_PARAMS" },
+        { ok: false, error: "INVALID_BODY" },
         { status: 400 }
       );
     }
 
-    if (!(rarity in MAX_LEVEL_BY_RARITY)) {
-      return NextResponse.json(
-        { ok: false, error: "INVALID_RARITY" },
-        { status: 400 }
-      );
-    }
+    const tokenKey = String(tokenIdRaw);
 
-    const db = loadDb();
-    // ? progress per token (tidak tergantung wallet), supaya tidak reset
-    const key = tokenId;
+    const db = await loadDb();
     const now = Date.now();
 
-    const existing = db[key];
+    const existing = db[tokenKey] || { level: 1, exp: 0 };
 
-    // Cek cooldown
-    if (existing?.lastFedAt) {
-      const elapsed = now - existing.lastFedAt;
-      if (elapsed < FEED_COOLDOWN_MS) {
-        const remainingMs = FEED_COOLDOWN_MS - elapsed;
-        const level = existing.level ?? 1;
-        const exp = existing.exp ?? 0;
-        const expNeededNext = expNeededForLevel(rarity, level);
-        const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
-        const isMax = level >= maxLevel || expNeededNext === 0;
+    const lastFeedAt = existing.lastFeedAt ?? 0;
+    const sinceLast = now - lastFeedAt;
 
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "ON_COOLDOWN",
-            remainingMs,
-            level,
-            exp,
-            expNeededNext,
-            isMax,
-          },
-          { status: 429 }
-        );
-      }
+    // Cek cooldown server
+    if (sinceLast < FEED_COOLDOWN_MS) {
+      const remainingMs = FEED_COOLDOWN_MS - sinceLast;
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "ON_COOLDOWN",
+          remainingMs,
+        },
+        { status: 429 }
+      );
     }
 
-    let level = existing?.level ?? 1;
-    let exp = existing?.exp ?? 0;
-    const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
+    const beforeLevel = Number.isFinite(existing.level) ? existing.level : 1;
+    const beforeExp = Number.isFinite(existing.exp) ? existing.exp : 0;
 
-    // Kalau sudah max, tetap simpan & kirim isMax
-    if (level >= maxLevel) {
-      const expNeededNext = 0;
-      db[key] = { level, exp, lastFedAt: now };
-      saveDb(db);
+    const updated = applyExpGain(
+      rarity,
+      beforeLevel,
+      beforeExp,
+      EXP_PER_FEED
+    );
 
-      const result: FishProgress = {
-        level,
-        exp,
-        expNeededNext,
-        isMax: true,
-      };
+    db[tokenKey] = {
+      level: updated.level,
+      exp: updated.isMax ? 0 : updated.exp,
+      lastFeedAt: now,
+      rarity,
+    };
 
-      return NextResponse.json({
+    await saveDb(db);
+
+    return NextResponse.json(
+      {
         ok: true,
-        ...result,
+        level: updated.level,
+        exp: updated.exp,
+        expNeededNext: updated.expNeededNext,
+        isMax: updated.isMax,
         cooldownMs: FEED_COOLDOWN_MS,
-      });
-    }
-
-    // Tambah EXP
-    exp += EXP_PER_FEED;
-
-    // Handle level up (boleh multi-level kalau EXP cukup)
-    let expNeededNext = expNeededForLevel(rarity, level);
-    while (expNeededNext > 0 && exp >= expNeededNext && level < maxLevel) {
-      exp -= expNeededNext;
-      level += 1;
-      expNeededNext = expNeededForLevel(rarity, level);
-    }
-
-    let isMax = false;
-    if (level >= maxLevel) {
-      level = maxLevel;
-      isMax = true;
-      expNeededNext = 0;
-      // di UI bar akan 100%, jadi exp di sini tidak terlalu penting
-      exp = 0;
-    }
-
-    db[key] = {
-      level,
-      exp,
-      lastFedAt: now,
-    };
-    saveDb(db);
-
-    const result: FishProgress = {
-      level,
-      exp,
-      expNeededNext,
-      isMax,
-    };
-
-    return NextResponse.json({
-      ok: true,
-      ...result,
-      cooldownMs: FEED_COOLDOWN_MS,
-    });
+      },
+      { status: 200 }
+    );
   } catch (err) {
-    console.error("Feed API error", err);
+    console.error("[feed] Unexpected error:", err);
     return NextResponse.json(
       { ok: false, error: "INTERNAL_ERROR" },
       { status: 500 }

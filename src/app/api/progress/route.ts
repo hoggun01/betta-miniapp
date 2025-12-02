@@ -1,18 +1,8 @@
-import { NextResponse } from "next/server";
-import fs from "fs";
+import { NextRequest, NextResponse } from "next/server";
+import fs from "fs/promises";
 import path from "path";
 
 type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
-
-type DbRecord = {
-  level: number;
-  exp: number;
-  lastFedAt: number;
-};
-
-type DbShape = {
-  [tokenId: string]: DbRecord;
-};
 
 type FishProgress = {
   level: number;
@@ -20,6 +10,17 @@ type FishProgress = {
   expNeededNext: number;
   isMax: boolean;
 };
+
+type RawDbRecord = {
+  level: number;
+  exp: number;
+  lastFeedAt?: number;
+  rarity?: Rarity;
+};
+
+type DbShape = Record<string, RawDbRecord>;
+
+const DB_PATH = path.join(process.cwd(), "database-fish.json");
 
 const MAX_LEVEL_BY_RARITY: Record<Rarity, number> = {
   COMMON: 15,
@@ -30,61 +31,74 @@ const MAX_LEVEL_BY_RARITY: Record<Rarity, number> = {
   LEGENDARY: 50,
 };
 
-const DB_PATH = path.join(process.cwd(), "data", "betta-progress.json");
+// Sama persis rumusnya: 100 + (level-1)*40
+function expNeededForLevel(rarity: Rarity, level: number): number {
+  const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
+  if (level >= maxLevel) return 0;
 
-function ensureDbFile() {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({}), "utf8");
-  }
+  const safeLevel = Math.max(1, Math.min(level, maxLevel));
+  return 100 + (safeLevel - 1) * 40;
 }
 
-function loadDb(): DbShape {
+async function loadDb(): Promise<DbShape> {
   try {
-    ensureDbFile();
-    const raw = fs.readFileSync(DB_PATH, "utf8");
-    return raw ? (JSON.parse(raw) as DbShape) : {};
-  } catch (err) {
-    console.error("Failed to load db file", err);
+    const raw = await fs.readFile(DB_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as DbShape;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      return {};
+    }
+    console.error("[progress] Failed to read DB:", err);
     return {};
   }
 }
 
-// Rumus sama dengan feed
-function expNeededForLevel(rarity: Rarity, level: number): number {
-  const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
-  if (level >= maxLevel) return 0;
-  const base = 100;
-  const increment = 40;
-  return base + (level - 1) * increment;
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const fishes = Array.isArray(body.fishes) ? body.fishes : [];
+    const fishes = body?.fishes as
+      | { tokenId: string | number; rarity: Rarity }[]
+      | undefined;
 
-    const db = loadDb();
+    if (!Array.isArray(fishes) || fishes.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "INVALID_BODY" },
+        { status: 400 }
+      );
+    }
+
+    const db = await loadDb();
     const progressByToken: Record<string, FishProgress> = {};
 
-    for (const item of fishes) {
-      const tokenId = String(item.tokenId ?? "").trim();
-      const rarity = String(item.rarity ?? "").toUpperCase() as Rarity;
+    for (const f of fishes) {
+      const tokenKey = String(f.tokenId);
+      const rarity = f.rarity;
 
-      if (!tokenId) continue;
-      if (!(rarity in MAX_LEVEL_BY_RARITY)) continue;
+      const dbRec = db[tokenKey];
 
-      const record = db[tokenId];
-      const level = record?.level ?? 1;
-      const exp = record?.exp ?? 0;
       const maxLevel = MAX_LEVEL_BY_RARITY[rarity];
-      const expNeededNext = expNeededForLevel(rarity, level);
-      const isMax = level >= maxLevel || expNeededNext === 0;
+      const baseLevel =
+        dbRec && Number.isFinite(dbRec.level) ? dbRec.level : 1;
+      const baseExp = dbRec && Number.isFinite(dbRec.exp) ? dbRec.exp : 0;
 
-      progressByToken[tokenId] = {
+      const level = Math.max(1, Math.min(baseLevel, maxLevel));
+
+      let exp = baseExp;
+      let expNeededNext = expNeededForLevel(rarity, level);
+      let isMax = level >= maxLevel || expNeededNext === 0;
+
+      if (isMax) {
+        // Kalau sudah max, EXP dikunci di 0
+        exp = 0;
+        expNeededNext = 0;
+      } else if (exp >= expNeededNext) {
+        // Safety clamp kalau DB pernah simpan exp kebanyakan
+        exp = Math.max(0, expNeededNext - 1);
+      }
+
+      progressByToken[tokenKey] = {
         level,
         exp,
         expNeededNext,
@@ -92,12 +106,12 @@ export async function POST(req: Request) {
       };
     }
 
-    return NextResponse.json({
-      ok: true,
-      progressByToken,
-    });
+    return NextResponse.json(
+      { ok: true, progressByToken },
+      { status: 200 }
+    );
   } catch (err) {
-    console.error("Progress API error", err);
+    console.error("[progress] Unexpected error:", err);
     return NextResponse.json(
       { ok: false, error: "INTERNAL_ERROR" },
       { status: 500 }

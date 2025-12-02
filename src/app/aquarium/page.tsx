@@ -909,7 +909,7 @@ export default function AquariumPage() {
                       />
                       {expGain !== null &&
                         expGainFishId === f.tokenId.toString() && (
-                          <div className="exp-float">+{EXP_PER_FEED} EXP</div>
+                          <div className="exp-float">+{expGain} EXP</div>
                         )}
                     </div>
                   </div>
