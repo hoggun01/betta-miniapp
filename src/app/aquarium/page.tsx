@@ -99,10 +99,10 @@ const EXP_PER_FEED = 20;
 const FEED_COOLDOWN_MIN = (() => {
   const raw = process.env.NEXT_PUBLIC_FEED_COOLDOWN;
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 60;
+  return Number.isFinite(n) && n > 0 ? n : 1;
 })();
 
-const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
+const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 1 * 1000;
 
 const LAST_FEED_STORAGE_KEY = "betta_last_feed_at_v1";
 

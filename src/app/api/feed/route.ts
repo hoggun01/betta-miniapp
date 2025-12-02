@@ -10,12 +10,12 @@ import {
 } from "@/lib/fishProgressStore";
 
 // Keep server-side cooldown in sync with client
-const DEFAULT_COOLDOWN_MINUTES = 60;
+const DEFAULT_COOLDOWN_MINUTES = 1;
 const FEED_COOLDOWN_MIN =
   Number(process.env.FEED_COOLDOWN_MIN) > 0
     ? Number(process.env.FEED_COOLDOWN_MIN)
     : DEFAULT_COOLDOWN_MINUTES;
-const COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
+const COOLDOWN_MS = FEED_COOLDOWN_MIN * 1 * 1000;
 
 // EXP per feed (locked)
 const EXP_PER_FEED = 20;
