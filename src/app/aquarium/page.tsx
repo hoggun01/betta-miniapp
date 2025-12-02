@@ -245,7 +245,7 @@ function computeStats(rarity: Rarity, level: number): BattleStats {
   return { hp, str, def, agi, crit, dodge };
 }
 
-// 🔹 BARU: helper untuk load progress semua ikan dari backend
+// 🔹 PATCH: helper untuk load progress semua ikan dari backend
 async function fetchProgressForFishes(
   fishes: MovingFish[]
 ): Promise<Record<string, FishProgress>> {
@@ -256,7 +256,7 @@ async function fetchProgressForFishes(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fishes: fishes.map((f) => ({
+        items: fishes.map((f) => ({
           tokenId: f.tokenId.toString(),
           rarity: f.rarity,
         })),
@@ -270,11 +270,25 @@ async function fetchProgressForFishes(
 
     const data = await res.json();
 
-    if (!data || !data.ok || !data.progressByToken) {
+    if (!data || !data.ok || !Array.isArray(data.progress)) {
       return {};
     }
 
-    return data.progressByToken as Record<string, FishProgress>;
+    const map: Record<string, FishProgress> = {};
+
+    for (const row of data.progress as any[]) {
+      if (typeof row.tokenId !== "string") continue;
+
+      map[row.tokenId] = {
+        level: typeof row.level === "number" ? row.level : 1,
+        exp: typeof row.exp === "number" ? row.exp : 0,
+        expNeededNext:
+          typeof row.expNeededNext === "number" ? row.expNeededNext : 0,
+        isMax: typeof row.isMax === "boolean" ? row.isMax : false,
+      };
+    }
+
+    return map;
   } catch (err) {
     console.error("fetchProgressForFishes error", err);
     return {};

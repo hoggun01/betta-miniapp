@@ -2,34 +2,25 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import {
+  expNeeded,
+  getMaxLevelForRarity,
   getOrCreateProgress,
   saveProgress,
-  getMaxLevelForRarity,
-  expNeeded,
   type Rarity,
 } from "@/lib/fishProgressStore";
 
-/**
- * FEED COOLDOWN (SERVER) uses ENV, in MINUTES.
- *
- * NEXT_PUBLIC_FEED_COOLDOWN=1   -> 1 minute
- * NEXT_PUBLIC_FEED_COOLDOWN=10  -> 10 minutes
- * NEXT_PUBLIC_FEED_COOLDOWN=60  -> 60 minutes
- *
- * If ENV is missing or invalid -> fallback 60 minutes.
- */
-const FEED_COOLDOWN_MIN = (() => {
-  const raw = process.env.NEXT_PUBLIC_FEED_COOLDOWN;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 60;
-})();
-
+// Keep server-side cooldown in sync with client
+const DEFAULT_COOLDOWN_MINUTES = 60;
+const FEED_COOLDOWN_MIN =
+  Number(process.env.FEED_COOLDOWN_MIN) > 0
+    ? Number(process.env.FEED_COOLDOWN_MIN)
+    : DEFAULT_COOLDOWN_MINUTES;
 const COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
 
-// Each feed gives +20 EXP (locked rule)
+// EXP per feed (locked)
 const EXP_PER_FEED = 20;
 
-type FeedRequestBody = {
+type FeedBody = {
   tokenId?: string;
   rarity?: Rarity;
   walletAddress?: string;
@@ -37,24 +28,23 @@ type FeedRequestBody = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as FeedRequestBody;
+    const body = (await req.json()) as FeedBody;
 
-    const tokenId = body.tokenId;
+    const tokenId = body.tokenId?.toString();
     const rarity = body.rarity;
-    const walletAddress = body.walletAddress;
+    const wallet = body.walletAddress;
 
-    if (!tokenId || !rarity) {
+    if (!tokenId || !rarity || !wallet) {
       return NextResponse.json(
         { ok: false, error: "MISSING_PARAMS" },
         { status: 400 }
       );
     }
 
-    // TODO: verify onchain ownership if needed
-
     const now = Date.now();
+
+    // Load or create base progress
     const progress = getOrCreateProgress(tokenId, rarity);
-    const maxLevel = getMaxLevelForRarity(rarity);
 
     // Cooldown check
     if (progress.lastFeedAt > 0) {
@@ -66,15 +56,22 @@ export async function POST(req: NextRequest) {
             ok: false,
             error: "ON_COOLDOWN",
             remainingMs,
-            now,
-            lastFeedAt: progress.lastFeedAt,
+            level: progress.level,
+            exp: progress.exp,
+            expNeededNext:
+              progress.level >= getMaxLevelForRarity(rarity)
+                ? 0
+                : expNeeded(progress.level),
+            isMax: progress.level >= getMaxLevelForRarity(rarity),
           },
           { status: 429 }
         );
       }
     }
 
-    // If already max level: only refresh cooldown
+    const maxLevel = getMaxLevelForRarity(rarity);
+
+    // Kalau sudah max level, cuma refresh cooldown (EXP tidak nambah)
     if (progress.level >= maxLevel) {
       progress.lastFeedAt = now;
       saveProgress(progress);
@@ -82,38 +79,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           ok: true,
-          tokenId: progress.tokenId,
-          rarity: progress.rarity,
           level: progress.level,
           exp: progress.exp,
           expNeededNext: 0,
-          lastFeedAt: progress.lastFeedAt,
-          cooldownMs: COOLDOWN_MS,
           isMax: true,
+          cooldownMs: COOLDOWN_MS,
         },
         { status: 200 }
       );
     }
 
-    // Add EXP
+    // Tambah EXP
     let level = progress.level;
     let exp = progress.exp + EXP_PER_FEED;
 
-    // Level-up loop
-    while (true) {
-      const needed = expNeeded(level);
-      if (exp >= needed && level < maxLevel) {
-        exp -= needed;
-        level += 1;
-      } else {
-        break;
-      }
+    // Level-up loop dengan rumus 100 + (L - 1) * 40
+    let needed = expNeeded(level);
+    while (level < maxLevel && exp >= needed) {
+      exp -= needed;
+      level += 1;
+      needed = expNeeded(level);
     }
 
-    // Clamp when reaching max level
+    // Clamp di max level, sisa EXP dibuang
     if (level >= maxLevel) {
       level = maxLevel;
-      exp = Math.min(exp, expNeeded(maxLevel));
+      exp = 0;
     }
 
     progress.level = level;
@@ -127,25 +118,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        tokenId: progress.tokenId,
-        rarity: progress.rarity,
-        level: progress.level,
-        exp: progress.exp,
+        level,
+        exp,
         expNeededNext,
-        lastFeedAt: progress.lastFeedAt,
-        cooldownMs: COOLDOWN_MS,
         isMax: level >= maxLevel,
+        cooldownMs: COOLDOWN_MS,
       },
       { status: 200 }
     );
-  } catch (e: any) {
-    console.error("FEED API error", e);
+  } catch (err) {
+    console.error("[/api/feed] INTERNAL_ERROR", err);
     return NextResponse.json(
-      {
-        ok: false,
-        error: "INTERNAL_ERROR",
-        detail: e?.message || String(e),
-      },
+      { ok: false, error: "INTERNAL_ERROR" },
       { status: 500 }
     );
   }
