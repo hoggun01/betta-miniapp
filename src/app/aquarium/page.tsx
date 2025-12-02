@@ -3,9 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
 import { createPublicClient, http } from "viem";
-import { base as baseChain } from "viem/chains";
+import { base } from "viem/chains";
 
-type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
+type Rarity =
+  | "COMMON"
+  | "UNCOMMON"
+  | "RARE"
+  | "EPIC"
+  | "LEGENDARY"
+  | "SPIRIT";
 
 type FishToken = {
   tokenId: bigint;
@@ -66,7 +72,7 @@ const RARITY_SPRITES: Record<Rarity, string> = {
   RARE: "/rare.png",
   EPIC: "/epic.png",
   LEGENDARY: "/legendary.png",
-  SPIRIT: "/spirit.png", // nanti kamu siapkan PNG spirit
+  SPIRIT: "/spirit.png", // siapkan nanti kalau sudah ada file-nya
 };
 
 function ipfsToHttp(uri: string): string {
@@ -114,8 +120,8 @@ function createInitialMotion(index: number): {
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
-  const base = 0.09 + Math.random() * 0.05;
-  const vx = (Math.random() > 0.5 ? 1 : -1) * base;
+  const baseSpeed = 0.09 + Math.random() * 0.05;
+  const vx = (Math.random() > 0.5 ? 1 : -1) * baseSpeed;
   const vy = (Math.random() > 0.5 ? 1 : -1) * (0.04 + Math.random() * 0.03);
 
   return {
@@ -127,8 +133,6 @@ function createInitialMotion(index: number): {
   };
 }
 
-type FeedStatus = "idle" | "loading" | "success" | "error";
-
 export default function AquariumPage() {
   const [isInMiniApp, setIsInMiniApp] = useState<boolean | null>(null);
   const [fid, setFid] = useState<number | null>(null);
@@ -138,10 +142,10 @@ export default function AquariumPage() {
   const [error, setError] = useState<string | null>(null);
   const [isFeeding, setIsFeeding] = useState(false);
 
-  // FEED state
-  const [feedStatus, setFeedStatus] = useState<FeedStatus>("idle");
-  const [feedErrorMessage, setFeedErrorMessage] = useState<string | null>(null);
-  const [cooldownSeconds, setCooldownSeconds] = useState<number | null>(null);
+  // FEED cooldown UI
+  const [nextFeedAt, setNextFeedAt] = useState<number | null>(null);
+  const [cooldownLabel, setCooldownLabel] = useState<string | null>(null);
+  const [isFeedLoading, setIsFeedLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,7 +157,9 @@ export default function AquariumPage() {
         setIsInMiniApp(mini);
 
         if (!mini) {
-          setError("This page is intended to be opened inside a Farcaster Mini App.");
+          setError(
+            "This page is intended to be opened inside a Farcaster Mini App."
+          );
           setIsLoading(false);
           await sdk.actions.ready();
           return;
@@ -199,7 +205,7 @@ export default function AquariumPage() {
         setWalletAddress(address);
 
         const client = createPublicClient({
-          chain: baseChain,
+          chain: base,
           transport: http(RPC_URL),
         });
 
@@ -239,6 +245,7 @@ export default function AquariumPage() {
 
         const maxTokenId = nextTokenIdValue - ONE;
 
+        // Safety cap: do not scan more than 500 earliest tokens
         const HARD_CAP = BigInt(500);
         const effectiveMax = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
@@ -266,7 +273,7 @@ export default function AquariumPage() {
 
           const batchIds = tokenIds.slice(i, i + BATCH_SIZE);
 
-          let ownerResults: any[];
+          let ownerResults: any[]; // multicall ownerOf
           try {
             ownerResults = await client.multicall({
               contracts: batchIds.map((id) => ({
@@ -405,7 +412,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement
+  // Random movement for all fish
   useEffect(() => {
     let frame: number;
 
@@ -481,28 +488,41 @@ export default function AquariumPage() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  // FEED animation reset (visual pellet)
+  // Turn off FEED animation after 1.5s
   useEffect(() => {
     if (!isFeeding) return;
     const id = setTimeout(() => setIsFeeding(false), 1500);
     return () => clearTimeout(id);
   }, [isFeeding]);
 
-  // cooldown timer tick
+  // Cooldown countdown MM:SS
   useEffect(() => {
-    if (cooldownSeconds === null) return;
-    if (cooldownSeconds <= 0) return;
+    if (!nextFeedAt) {
+      setCooldownLabel(null);
+      return;
+    }
 
-    const id = window.setInterval(() => {
-      setCooldownSeconds((prev) => {
-        if (prev === null) return null;
-        if (prev <= 1) return 0;
-        return prev - 1;
-      });
-    }, 1000);
+    const update = () => {
+      const diff = nextFeedAt - Date.now();
+      if (diff <= 0) {
+        setNextFeedAt(null);
+        setCooldownLabel(null);
+        return;
+      }
 
+      const totalSec = Math.floor(diff / 1000);
+      const minutes = Math.floor(totalSec / 60);
+      const seconds = totalSec % 60;
+
+      const mm = minutes.toString().padStart(2, "0");
+      const ss = seconds.toString().padStart(2, "0");
+      setCooldownLabel(`${mm}:${ss}`);
+    };
+
+    update();
+    const id = window.setInterval(update, 1000);
     return () => window.clearInterval(id);
-  }, [cooldownSeconds]);
+  }, [nextFeedAt]);
 
   const raritySummary = useMemo(() => {
     const counts: Record<Rarity, number> = {
@@ -519,55 +539,46 @@ export default function AquariumPage() {
     return counts;
   }, [fish]);
 
+  // FEED button -> call /api/feed
   const handleFeedClick = async () => {
-    if (!fish.length || !walletAddress) return;
-    if (feedStatus === "loading") return;
+    if (!fish.length || !walletAddress || isFeedLoading) return;
 
-    const targetFish = fish[0]; // sementara feed ikan pertama
-    setFeedStatus("loading");
-    setFeedErrorMessage(null);
-    setIsFeeding(true);
+    const firstFish = fish[0]; // sementara: feed ikan pertama
+    setIsFeedLoading(true);
 
     try {
       const res = await fetch("/api/feed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tokenId: targetFish.tokenId.toString(),
-          rarity: targetFish.rarity,
+          tokenId: firstFish.tokenId.toString(),
+          rarity: firstFish.rarity,
           walletAddress,
         }),
       });
 
       const data = await res.json();
 
-      if (!res.ok || !data.ok) {
+      if (!res.ok) {
         if (data.error === "ON_COOLDOWN" && typeof data.remainingMs === "number") {
-          const secs = Math.ceil(data.remainingMs / 1000);
-          setCooldownSeconds(secs);
-          setFeedErrorMessage(
-            `Your fish is full. Next feed in ~${Math.max(secs, 0)}s.`
-          );
-        } else {
-          setFeedErrorMessage(
-            data.error || "Failed to feed your fish. Please try again."
-          );
+          const endAt = Date.now() + data.remainingMs;
+          setNextFeedAt(endAt);
         }
-        setFeedStatus("error");
-      } else {
-        setFeedStatus("success");
-        if (typeof data.cooldownMs === "number") {
-          setCooldownSeconds(Math.floor(data.cooldownMs / 1000));
-        } else {
-          setCooldownSeconds(3600);
-        }
+        console.warn("Feed error:", data);
+        return;
       }
-    } catch (e) {
-      console.error(e);
-      setFeedStatus("error");
-      setFeedErrorMessage("Unexpected error while feeding your fish.");
+
+      // success -> start full cooldown
+      if (typeof data.cooldownMs === "number") {
+        const endAt = Date.now() + data.cooldownMs;
+        setNextFeedAt(endAt);
+      }
+
+      setIsFeeding(true);
+    } catch (err) {
+      console.error("Feed request failed", err);
     } finally {
-      setTimeout(() => setIsFeeding(false), 1500);
+      setIsFeedLoading(false);
     }
   };
 
@@ -583,7 +594,8 @@ export default function AquariumPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-slate-100 px-6">
         <p className="text-center text-sm">
-          Please open this page from your Farcaster Mini App to see your Betta aquarium.
+          Please open this page from your Farcaster Mini App to see your Betta
+          aquarium.
         </p>
       </div>
     );
@@ -694,7 +706,9 @@ export default function AquariumPage() {
                       className={
                         "fish-wrapper " +
                         rarityClass +
-                        (f.facing === "left" ? " fish-facing-left" : " fish-facing-right")
+                        (f.facing === "left"
+                          ? " fish-facing-left"
+                          : " fish-facing-right")
                       }
                     >
                       <img
@@ -746,15 +760,9 @@ export default function AquariumPage() {
               type="button"
               onClick={handleFeedClick}
               className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-8 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-sky-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={
-                isLoading ||
-                !!error ||
-                !fish.length ||
-                feedStatus === "loading" ||
-                (cooldownSeconds !== null && cooldownSeconds > 0)
-              }
+              disabled={isLoading || !!error || !fish.length || isFeedLoading}
             >
-              {feedStatus === "loading" ? "FEEDING..." : "FEED"}
+              FEED
             </button>
             <button
               type="button"
@@ -774,19 +782,11 @@ export default function AquariumPage() {
             </button>
           </div>
 
-          {feedErrorMessage && (
-            <p className="text-[11px] text-red-300 text-center px-4">
-              {feedErrorMessage}
+          {cooldownLabel && (
+            <p className="text-[10px] text-slate-200 text-center tracking-[0.16em] uppercase">
+              NEXT FEED AVAILABLE IN {cooldownLabel}
             </p>
           )}
-
-          {!feedErrorMessage &&
-            cooldownSeconds !== null &&
-            cooldownSeconds > 0 && (
-              <p className="text-[11px] text-slate-400 text-center px-4">
-                Next feed available in ~{cooldownSeconds}s
-              </p>
-            )}
         </div>
       </div>
 
@@ -823,6 +823,7 @@ export default function AquariumPage() {
           transform: none;
         }
 
+        /* outline glow per rarity (around fish edges) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(148, 163, 184, 0.9))
@@ -857,8 +858,8 @@ export default function AquariumPage() {
 
         .rarity-spirit .fish-img {
           filter:
-            drop-shadow(0 0 2px rgba(56, 189, 248, 0.9))
-            drop-shadow(0 0 8px rgba(129, 140, 248, 0.8));
+            drop-shadow(0 0 2px rgba(129, 140, 248, 0.95))
+            drop-shadow(0 0 9px rgba(56, 189, 248, 0.8));
         }
 
         .feed-mode .fish-img {
@@ -1067,7 +1068,9 @@ function Badge({ label, value }: BadgeProps) {
       <span className="uppercase tracking-[0.18em] text-[9px] text-slate-300">
         {label}
       </span>
-      <span className="text-[10px] text-slate-100 font-semibold">{value}</span>
+      <span className="text-[10px] text-slate-100 font-semibold">
+        {value}
+      </span>
     </div>
   );
 }
