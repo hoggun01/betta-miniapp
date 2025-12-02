@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { sdk } from "@farcaster/miniapp-sdk";
 import { createPublicClient, http } from "viem";
-import { base } from "viem/chains";
+import { base as baseChain } from "viem/chains";
 
-type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY";
+type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
 
 type FishToken = {
   tokenId: bigint;
@@ -66,6 +66,7 @@ const RARITY_SPRITES: Record<Rarity, string> = {
   RARE: "/rare.png",
   EPIC: "/epic.png",
   LEGENDARY: "/legendary.png",
+  SPIRIT: "/spirit.png", // nanti kamu siapkan PNG spirit
 };
 
 function ipfsToHttp(uri: string): string {
@@ -99,6 +100,7 @@ function detectRarityFromMetadata(meta: any): Rarity {
   if (normalized === "RARE") return "RARE";
   if (normalized === "EPIC") return "EPIC";
   if (normalized === "LEGENDARY") return "LEGENDARY";
+  if (normalized === "SPIRIT") return "SPIRIT";
   return "COMMON";
 }
 
@@ -125,6 +127,8 @@ function createInitialMotion(index: number): {
   };
 }
 
+type FeedStatus = "idle" | "loading" | "success" | "error";
+
 export default function AquariumPage() {
   const [isInMiniApp, setIsInMiniApp] = useState<boolean | null>(null);
   const [fid, setFid] = useState<number | null>(null);
@@ -133,6 +137,11 @@ export default function AquariumPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFeeding, setIsFeeding] = useState(false);
+
+  // FEED state
+  const [feedStatus, setFeedStatus] = useState<FeedStatus>("idle");
+  const [feedErrorMessage, setFeedErrorMessage] = useState<string | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,7 +199,7 @@ export default function AquariumPage() {
         setWalletAddress(address);
 
         const client = createPublicClient({
-          chain: base,
+          chain: baseChain,
           transport: http(RPC_URL),
         });
 
@@ -230,7 +239,6 @@ export default function AquariumPage() {
 
         const maxTokenId = nextTokenIdValue - ONE;
 
-        // Safety cap: do not scan more than 500 earliest tokens
         const HARD_CAP = BigInt(500);
         const effectiveMax = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
 
@@ -271,8 +279,7 @@ export default function AquariumPage() {
             });
           } catch (err: any) {
             const code = err?.code;
-            const message: string =
-              err?.shortMessage || err?.message || "";
+            const message: string = err?.shortMessage || err?.message || "";
 
             if (code === -32016 || message.toLowerCase().includes("rate limit")) {
               console.warn("RPC rate limit during ownerOf multicall", err);
@@ -311,8 +318,7 @@ export default function AquariumPage() {
             });
           } catch (err: any) {
             const code = err?.code;
-            const message: string =
-              err?.shortMessage || err?.message || "";
+            const message: string = err?.shortMessage || err?.message || "";
 
             if (code === -32016 || message.toLowerCase().includes("rate limit")) {
               console.warn("RPC rate limit during tokenURI multicall", err);
@@ -399,7 +405,7 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // Random movement (no trail, just fish motion)
+  // Random movement
   useEffect(() => {
     let frame: number;
 
@@ -408,7 +414,6 @@ export default function AquariumPage() {
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
-          // Small random wander so fish do not move in a perfect straight line
           const wanderStrengthX = 0.01;
           const wanderStrengthY = 0.008;
 
@@ -476,11 +481,28 @@ export default function AquariumPage() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  // FEED animation reset (visual pellet)
   useEffect(() => {
     if (!isFeeding) return;
     const id = setTimeout(() => setIsFeeding(false), 1500);
     return () => clearTimeout(id);
   }, [isFeeding]);
+
+  // cooldown timer tick
+  useEffect(() => {
+    if (cooldownSeconds === null) return;
+    if (cooldownSeconds <= 0) return;
+
+    const id = window.setInterval(() => {
+      setCooldownSeconds((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(id);
+  }, [cooldownSeconds]);
 
   const raritySummary = useMemo(() => {
     const counts: Record<Rarity, number> = {
@@ -489,6 +511,7 @@ export default function AquariumPage() {
       RARE: 0,
       EPIC: 0,
       LEGENDARY: 0,
+      SPIRIT: 0,
     };
     for (const f of fish) {
       counts[f.rarity] += 1;
@@ -496,9 +519,56 @@ export default function AquariumPage() {
     return counts;
   }, [fish]);
 
-  const handleFeedClick = () => {
-    if (!fish.length) return;
+  const handleFeedClick = async () => {
+    if (!fish.length || !walletAddress) return;
+    if (feedStatus === "loading") return;
+
+    const targetFish = fish[0]; // sementara feed ikan pertama
+    setFeedStatus("loading");
+    setFeedErrorMessage(null);
     setIsFeeding(true);
+
+    try {
+      const res = await fetch("/api/feed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenId: targetFish.tokenId.toString(),
+          rarity: targetFish.rarity,
+          walletAddress,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        if (data.error === "ON_COOLDOWN" && typeof data.remainingMs === "number") {
+          const secs = Math.ceil(data.remainingMs / 1000);
+          setCooldownSeconds(secs);
+          setFeedErrorMessage(
+            `Your fish is full. Next feed in ~${Math.max(secs, 0)}s.`
+          );
+        } else {
+          setFeedErrorMessage(
+            data.error || "Failed to feed your fish. Please try again."
+          );
+        }
+        setFeedStatus("error");
+      } else {
+        setFeedStatus("success");
+        if (typeof data.cooldownMs === "number") {
+          setCooldownSeconds(Math.floor(data.cooldownMs / 1000));
+        } else {
+          setCooldownSeconds(3600);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      setFeedStatus("error");
+      setFeedErrorMessage("Unexpected error while feeding your fish.");
+    } finally {
+      setTimeout(() => setIsFeeding(false), 1500);
+    }
   };
 
   const handleMyFishClick = () => {
@@ -593,7 +663,6 @@ export default function AquariumPage() {
               </div>
             )}
 
-            {/* Main fish sprites */}
             {!isLoading &&
               !error &&
               fish.map((f) => {
@@ -606,7 +675,9 @@ export default function AquariumPage() {
                     ? "rarity-rare"
                     : f.rarity === "EPIC"
                     ? "rarity-epic"
-                    : "rarity-legendary";
+                    : f.rarity === "LEGENDARY"
+                    ? "rarity-legendary"
+                    : "rarity-spirit";
 
                 return (
                   <div
@@ -663,36 +734,59 @@ export default function AquariumPage() {
                 <Badge label="Rare" value={raritySummary.RARE} />
                 <Badge label="Epic" value={raritySummary.EPIC} />
                 <Badge label="Legendary" value={raritySummary.LEGENDARY} />
+                <Badge label="Spirit" value={raritySummary.SPIRIT} />
               </div>
             </div>
           </div>
         </section>
 
-        <div className="flex items-center justify-center mt-4 gap-4">
-          <button
-            type="button"
-            onClick={handleFeedClick}
-            className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-8 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-sky-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLoading || !!error || !fish.length}
-          >
-            FEED
-          </button>
-          <button
-            type="button"
-            onClick={handleMyFishClick}
-            className="inline-flex items-center justify-center rounded-full bg-slate-800/90 px-7 py-2.5 text-sm font-semibold text-slate-100 border border-slate-600/80 shadow-md shadow-slate-900/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLoading || !!error || !fish.length}
-          >
-            MY FISH
-          </button>
-          <button
-            type="button"
-            onClick={handleBattleClick}
-            className="inline-flex items-center justify-center rounded-full bg-fuchsia-600/90 px-7 py-2.5 text-sm font-semibold text-slate-50 shadow-md shadow-fuchsia-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLoading || !!error || !fish.length}
-          >
-            BATTLE
-          </button>
+        <div className="flex flex-col items-center justify-center mt-4 gap-1.5">
+          <div className="flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={handleFeedClick}
+              className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-8 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-sky-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={
+                isLoading ||
+                !!error ||
+                !fish.length ||
+                feedStatus === "loading" ||
+                (cooldownSeconds !== null && cooldownSeconds > 0)
+              }
+            >
+              {feedStatus === "loading" ? "FEEDING..." : "FEED"}
+            </button>
+            <button
+              type="button"
+              onClick={handleMyFishClick}
+              className="inline-flex items-center justify-center rounded-full bg-slate-800/90 px-7 py-2.5 text-sm font-semibold text-slate-100 border border-slate-600/80 shadow-md shadow-slate-900/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isLoading || !!error || !fish.length}
+            >
+              MY FISH
+            </button>
+            <button
+              type="button"
+              onClick={handleBattleClick}
+              className="inline-flex items-center justify-center rounded-full bg-fuchsia-600/90 px-7 py-2.5 text-sm font-semibold text-slate-50 shadow-md shadow-fuchsia-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isLoading || !!error || !fish.length}
+            >
+              BATTLE
+            </button>
+          </div>
+
+          {feedErrorMessage && (
+            <p className="text-[11px] text-red-300 text-center px-4">
+              {feedErrorMessage}
+            </p>
+          )}
+
+          {!feedErrorMessage &&
+            cooldownSeconds !== null &&
+            cooldownSeconds > 0 && (
+              <p className="text-[11px] text-slate-400 text-center px-4">
+                Next feed available in ~{cooldownSeconds}s
+              </p>
+            )}
         </div>
       </div>
 
@@ -729,7 +823,6 @@ export default function AquariumPage() {
           transform: none;
         }
 
-        /* Subtle outline glow per rarity (around fish edges) */
         .rarity-common .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(148, 163, 184, 0.9))
@@ -760,6 +853,12 @@ export default function AquariumPage() {
             drop-shadow(0 0 8px rgba(236, 72, 153, 0.85))
             drop-shadow(0 0 10px rgba(250, 204, 21, 0.85))
             drop-shadow(0 0 12px rgba(59, 130, 246, 0.85));
+        }
+
+        .rarity-spirit .fish-img {
+          filter:
+            drop-shadow(0 0 2px rgba(56, 189, 248, 0.9))
+            drop-shadow(0 0 8px rgba(129, 140, 248, 0.8));
         }
 
         .feed-mode .fish-img {
@@ -958,6 +1057,8 @@ function Badge({ label, value }: BadgeProps) {
     dotColorClass = "bg-amber-400";
   } else if (lower === "legendary") {
     dotColorClass = "bg-red-500";
+  } else if (lower === "spirit") {
+    dotColorClass = "bg-indigo-400";
   }
 
   return (
