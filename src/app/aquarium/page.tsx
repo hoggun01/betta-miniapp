@@ -72,8 +72,12 @@ const RARITY_SPRITES: Record<Rarity, string> = {
   RARE: "/rare.png",
   EPIC: "/epic.png",
   LEGENDARY: "/legendary.png",
-  SPIRIT: "/spirit.png", // siapkan nanti kalau sudah ada file-nya
+  SPIRIT: "/spirit.png", // to be prepared later when the file exists
 };
+
+// Feed cooldown config (client-side guard)
+const FEED_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const LAST_FEED_STORAGE_KEY = "betta_last_feed_at_v1";
 
 function ipfsToHttp(uri: string): string {
   if (!uri) return uri;
@@ -131,6 +135,38 @@ function createInitialMotion(index: number): {
     vy,
     facing: vx >= 0 ? "right" : "left",
   };
+}
+
+// Read last feed time from localStorage and compute nextFeedAt
+function loadNextFeedFromStorage(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LAST_FEED_STORAGE_KEY);
+    if (!raw) return null;
+    const last = Number(raw);
+    if (Number.isNaN(last)) return null;
+    const nextAt = last + FEED_COOLDOWN_MS;
+    if (nextAt <= Date.now()) return null;
+    return nextAt;
+  } catch (err) {
+    console.error("Failed to read last feed time from storage", err);
+    return null;
+  }
+}
+
+// Persist nextFeedAt into localStorage (as lastFeedAt)
+function persistNextFeedAt(nextFeedAt: number | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (nextFeedAt === null) {
+      window.localStorage.removeItem(LAST_FEED_STORAGE_KEY);
+      return;
+    }
+    const lastAt = nextFeedAt - FEED_COOLDOWN_MS;
+    window.localStorage.setItem(LAST_FEED_STORAGE_KEY, String(lastAt));
+  } catch (err) {
+    console.error("Failed to save last feed time to storage", err);
+  }
 }
 
 export default function AquariumPage() {
@@ -412,6 +448,14 @@ export default function AquariumPage() {
     };
   }, []);
 
+  // Load feed cooldown from localStorage on mount
+  useEffect(() => {
+    const storedNext = loadNextFeedFromStorage();
+    if (storedNext) {
+      setNextFeedAt(storedNext);
+    }
+  }, []);
+
   // Random movement for all fish
   useEffect(() => {
     let frame: number;
@@ -507,6 +551,7 @@ export default function AquariumPage() {
       if (diff <= 0) {
         setNextFeedAt(null);
         setCooldownLabel(null);
+        persistNextFeedAt(null);
         return;
       }
 
@@ -539,11 +584,16 @@ export default function AquariumPage() {
     return counts;
   }, [fish]);
 
-  // FEED button -> call /api/feed
+  // FEED button -> call /api/feed (guarded by local cooldown)
   const handleFeedClick = async () => {
     if (!fish.length || !walletAddress || isFeedLoading) return;
 
-    const firstFish = fish[0]; // sementara: feed ikan pertama
+    // Local cooldown guard: do not call API if still on cooldown
+    if (nextFeedAt && nextFeedAt > Date.now()) {
+      return;
+    }
+
+    const firstFish = fish[0]; // for now: feed the first fish
     setIsFeedLoading(true);
 
     try {
@@ -563,15 +613,25 @@ export default function AquariumPage() {
         if (data.error === "ON_COOLDOWN" && typeof data.remainingMs === "number") {
           const endAt = Date.now() + data.remainingMs;
           setNextFeedAt(endAt);
+          persistNextFeedAt(endAt);
         }
         console.warn("Feed error:", data);
         return;
       }
 
-      // success -> start full cooldown
+      // success -> start full cooldown (from API, fallback to FEED_COOLDOWN_MS)
+      let endAt: number | null = null;
       if (typeof data.cooldownMs === "number") {
-        const endAt = Date.now() + data.cooldownMs;
+        endAt = Date.now() + data.cooldownMs;
+      } else if (typeof data.remainingMs === "number") {
+        endAt = Date.now() + data.remainingMs;
+      } else {
+        endAt = Date.now() + FEED_COOLDOWN_MS;
+      }
+
+      if (endAt !== null) {
         setNextFeedAt(endAt);
+        persistNextFeedAt(endAt);
       }
 
       setIsFeeding(true);
@@ -589,6 +649,8 @@ export default function AquariumPage() {
   const handleBattleClick = () => {
     console.log("BATTLE clicked");
   };
+
+  const isOnCooldown = nextFeedAt !== null && nextFeedAt > Date.now();
 
   if (isInMiniApp === false) {
     return (
@@ -760,7 +822,13 @@ export default function AquariumPage() {
               type="button"
               onClick={handleFeedClick}
               className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 px-8 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-sky-500/40 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isLoading || !!error || !fish.length || isFeedLoading}
+              disabled={
+                isLoading ||
+                !!error ||
+                !fish.length ||
+                isFeedLoading ||
+                isOnCooldown
+              }
             >
               FEED
             </button>
