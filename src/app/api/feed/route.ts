@@ -9,7 +9,23 @@ import {
 } from "@/lib/fishProgressStore";
 import type { Rarity } from "@/lib/fishProgressStore";
 
-const COOLDOWN_MS = 3600 * 1000; // 1 jam
+/**
+ * FEED COOLDOWN (SERVER) pakai ENV, satuan MENIT
+ *
+ * NEXT_PUBLIC_FEED_COOLDOWN=1   -> 1 menit
+ * NEXT_PUBLIC_FEED_COOLDOWN=10  -> 10 menit
+ * NEXT_PUBLIC_FEED_COOLDOWN=60  -> 60 menit
+ *
+ * Jika ENV tidak ada / tidak valid -> fallback 60 menit.
+ */
+const FEED_COOLDOWN_MIN = (() => {
+  const raw = process.env.NEXT_PUBLIC_FEED_COOLDOWN;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 60;
+})();
+
+const COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
+
 const EXP_PER_FEED = 10;
 
 type FeedRequestBody = {
