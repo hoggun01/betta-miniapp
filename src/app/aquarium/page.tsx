@@ -5,12 +5,19 @@ import { sdk } from "@farcaster/miniapp-sdk";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
-type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
+type Rarity =
+  | "COMMON"
+  | "UNCOMMON"
+  | "RARE"
+  | "EPIC"
+  | "LEGENDARY"
+  | "SPIRIT";
 
 type FishToken = {
   tokenId: bigint;
   rarity: Rarity;
-  imageUrl: string;
+  imageUrl: string; // sprite used in aquarium
+  nftImageUrl?: string; // original NFT image from metadata
 };
 
 type MovingFish = FishToken & {
@@ -26,6 +33,15 @@ type FishProgress = {
   exp: number;
   expNeededNext: number;
   isMax: boolean;
+};
+
+type BattleStats = {
+  hp: number;
+  str: number;
+  def: number;
+  agi: number;
+  crit: number;
+  dodge: number;
 };
 
 const BETTA_CONTRACT_ADDRESS = process.env
@@ -134,7 +150,13 @@ function detectRarityFromMetadata(meta: any): Rarity {
   return "COMMON";
 }
 
-function createInitialMotion(index: number) {
+function createInitialMotion(index: number): {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  facing: "left" | "right";
+} {
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
 
@@ -179,6 +201,48 @@ function persistNextFeedAt(nextFeedAt: number | null) {
   } catch (err) {
     console.error("Failed to save last feed time to storage", err);
   }
+}
+
+// Basic stat formula for battle status
+function computeStats(rarity: Rarity, level: number): BattleStats {
+  const rarityMultiplier = {
+    COMMON: { hp: 1.0, str: 1.0, def: 1.0, agi: 1.0 },
+    UNCOMMON: { hp: 1.1, str: 1.1, def: 1.05, agi: 1.05 },
+    RARE: { hp: 1.25, str: 1.25, def: 1.15, agi: 1.15 },
+    SPIRIT: { hp: 1.3, str: 1.3, def: 1.2, agi: 1.2 },
+    EPIC: { hp: 1.45, str: 1.45, def: 1.3, agi: 1.3 },
+    LEGENDARY: { hp: 1.6, str: 1.6, def: 1.4, agi: 1.4 },
+  }[rarity];
+
+  const baseHp = 100;
+  const baseStr = 20;
+  const baseDef = 15;
+  const baseAgi = 10;
+
+  const hp = Math.round((baseHp + level * 12) * rarityMultiplier.hp);
+  const str = Math.round((baseStr + level * 3) * rarityMultiplier.str);
+  const def = Math.round((baseDef + level * 2.5) * rarityMultiplier.def);
+  const agi = Math.round((baseAgi + level * 2) * rarityMultiplier.agi);
+
+  const baseCrit = 3;
+  const baseDodge = 3;
+
+  const rarityCritBonus = {
+    COMMON: 0,
+    UNCOMMON: 1,
+    RARE: 2,
+    SPIRIT: 3,
+    EPIC: 4,
+    LEGENDARY: 5,
+  }[rarity];
+
+  const crit = Math.min(50, baseCrit + level * 0.4 + rarityCritBonus);
+  const dodge = Math.min(
+    40,
+    baseDodge + level * 0.35 + Math.max(0, rarityCritBonus - 1)
+  );
+
+  return { hp, str, def, agi, crit, dodge };
 }
 
 export default function AquariumPage() {
@@ -398,6 +462,9 @@ export default function AquariumPage() {
 
               const rarity = detectRarityFromMetadata(meta);
               const spriteUrl = RARITY_SPRITES[rarity];
+              const nftImageUrl = ipfsToHttp(
+                meta?.image || meta?.image_url || ""
+              );
 
               const motion = createInitialMotion(index++);
 
@@ -405,11 +472,12 @@ export default function AquariumPage() {
                 tokenId,
                 rarity,
                 imageUrl: spriteUrl,
+                nftImageUrl,
                 x: motion.x,
                 y: motion.y,
                 vx: motion.vx,
                 vy: motion.vy,
-                facing: motion.facing as "left" | "right",
+                facing: motion.facing,
               });
 
               found += 1;
@@ -631,7 +699,6 @@ export default function AquariumPage() {
         persistNextFeedAt(endAt);
       }
 
-      // Update local progress for MY FISH
       if (
         typeof data.level === "number" &&
         typeof data.exp === "number" &&
@@ -885,9 +952,9 @@ export default function AquariumPage() {
           )}
         </div>
 
-        {/* MY FISH PANEL (EXP + LEVEL, ONLY HERE) */}
+        {/* MY FISH PAGE SECTION */}
         {showMyFish && !!fish.length && (
-          <section className="mt-2 w-full rounded-2xl bg-slate-900/70 border border-slate-700/70 px-4 py-3 space-y-2">
+          <section className="mt-3 w-full rounded-2xl bg-slate-900/80 border border-slate-700/80 px-4 py-3 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold tracking-[0.18em] uppercase text-slate-200">
                 My Fish Status
@@ -896,15 +963,16 @@ export default function AquariumPage() {
                 Feed gives +{EXP_PER_FEED} EXP
               </span>
             </div>
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {fish.map((f) => {
                 const key = f.tokenId.toString();
                 const p = progressByToken[key];
                 const maxLevel = MAX_LEVEL_BY_RARITY[f.rarity];
-                const levelText = p
-                  ? `Lv ${p.level} / ${maxLevel}`
-                  : `Lv 1 / ${maxLevel}`;
-                let expText = "Feed this fish to start EXP.";
+                const level = p?.level ?? 1;
+                const stats = computeStats(f.rarity, level);
+
+                const levelText = `Level ${level} / ${maxLevel}`;
+                let expText = "No EXP yet. Feed this fish to start.";
                 let barPercent = 0;
 
                 if (p) {
@@ -926,30 +994,89 @@ export default function AquariumPage() {
                 return (
                   <div
                     key={key}
-                    className="rounded-xl bg-slate-900/90 border border-slate-700/80 px-3 py-2.5 text-[11px] space-y-1.5"
+                    className="rounded-xl bg-slate-900/90 border border-slate-700/80 px-3 py-3 text-[11px] space-y-2"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-200">
-                          #{key}
-                        </span>
-                        <span className="uppercase tracking-[0.16em] text-[9px] text-slate-400">
-                          {f.rarity}
-                        </span>
+                    <div className="flex gap-3">
+                      <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-slate-800 flex items-center justify-center">
+                        {f.nftImageUrl ? (
+                          <img
+                            src={f.nftImageUrl}
+                            alt={`NFT #${key}`}
+                            className="w-full h-full object-cover"
+                            draggable={false}
+                          />
+                        ) : (
+                          <span className="text-[10px] text-slate-400 text-center px-1">
+                            NFT image not found
+                          </span>
+                        )}
+                        <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full border border-slate-700 overflow-hidden bg-slate-900">
+                          <img
+                            src={f.imageUrl}
+                            alt="Sprite"
+                            className="w-full h-full object-contain"
+                            draggable={false}
+                          />
+                        </div>
                       </div>
-                      <span className="text-[11px] text-sky-200 font-semibold">
-                        {levelText}
-                      </span>
+
+                      <div className="flex-1 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-200">
+                              #{key}
+                            </span>
+                            <span className="uppercase tracking-[0.16em] text-[9px] text-slate-400">
+                              {f.rarity}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-sky-200 font-semibold">
+                            {levelText}
+                          </span>
+                        </div>
+
+                        <div className="mt-1 h-1.5 w-full rounded-full bg-slate-800/90 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-amber-300 to-yellow-400"
+                            style={{ width: `${barPercent}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-300 mt-0.5">
+                          {expText}
+                        </p>
+
+                        <div className="grid grid-cols-3 gap-x-3 gap-y-1 mt-1.5 text-[10px] text-slate-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">HP</span>
+                            <span className="font-semibold">{stats.hp}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">STR</span>
+                            <span className="font-semibold">{stats.str}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">DEF</span>
+                            <span className="font-semibold">{stats.def}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">AGI</span>
+                            <span className="font-semibold">{stats.agi}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">CRIT</span>
+                            <span className="font-semibold">
+                              {stats.crit.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">DODGE</span>
+                            <span className="font-semibold">
+                              {stats.dodge.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-800/90 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-amber-300 to-yellow-400"
-                        style={{ width: `${barPercent}%` }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-300 mt-0.5">
-                      {expText}
-                    </p>
                   </div>
                 );
               })}

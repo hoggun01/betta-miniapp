@@ -1,13 +1,19 @@
 // src/lib/fishProgressStore.ts
 
-export type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
+export type Rarity =
+  | "COMMON"
+  | "UNCOMMON"
+  | "RARE"
+  | "EPIC"
+  | "LEGENDARY"
+  | "SPIRIT";
 
 export type FishProgress = {
-  tokenId: string;       // tokenId as string
+  tokenId: string;
   rarity: Rarity;
   level: number;
-  exp: number;           // current exp within current level
-  lastFeedAt: number;    // timestamp in ms
+  exp: number;
+  lastFeedAt: number;
 };
 
 // Max level per rarity (locked rules)
@@ -30,11 +36,6 @@ function makeKey(tokenId: string, rarity: Rarity): string {
 /**
  * EXP needed to go from level L to L+1
  * Formula: 100 + (L - 1) * 40
- *
- * Level 1 -> 2 = 100
- * Level 2 -> 3 = 140
- * Level 3 -> 4 = 180
- * ...
  */
 export function expNeeded(level: number): number {
   if (level < 1) return 100;
@@ -49,10 +50,12 @@ export function getMaxLevelForRarity(rarity: Rarity): number {
 }
 
 /**
- * Get existing progress or create a new one if none exists.
- * New fish starts at level 1, exp 0, lastFeedAt = 0.
+ * Get existing progress or create a new one.
  */
-export function getOrCreateProgress(tokenId: string, rarity: Rarity): FishProgress {
+export function getOrCreateProgress(
+  tokenId: string,
+  rarity: Rarity
+): FishProgress {
   const key = makeKey(tokenId, rarity);
   const existing = progressStore.get(key);
   if (existing) return existing;

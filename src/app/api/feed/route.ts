@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // TODO: In the future, you can verify onchain that walletAddress owns tokenId.
+    // TODO: verify onchain ownership if needed
 
     const now = Date.now();
     const progress = getOrCreateProgress(tokenId, rarity);
