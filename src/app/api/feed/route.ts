@@ -6,17 +6,17 @@ import {
   saveProgress,
   getMaxLevelForRarity,
   expNeeded,
+  type Rarity,
 } from "@/lib/fishProgressStore";
-import type { Rarity } from "@/lib/fishProgressStore";
 
 /**
- * FEED COOLDOWN (SERVER) pakai ENV, satuan MENIT
+ * FEED COOLDOWN (SERVER) uses ENV, in MINUTES.
  *
- * NEXT_PUBLIC_FEED_COOLDOWN=1   -> 1 menit
- * NEXT_PUBLIC_FEED_COOLDOWN=10  -> 10 menit
- * NEXT_PUBLIC_FEED_COOLDOWN=60  -> 60 menit
+ * NEXT_PUBLIC_FEED_COOLDOWN=1   -> 1 minute
+ * NEXT_PUBLIC_FEED_COOLDOWN=10  -> 10 minutes
+ * NEXT_PUBLIC_FEED_COOLDOWN=60  -> 60 minutes
  *
- * Jika ENV tidak ada / tidak valid -> fallback 60 menit.
+ * If ENV is missing or invalid -> fallback 60 minutes.
  */
 const FEED_COOLDOWN_MIN = (() => {
   const raw = process.env.NEXT_PUBLIC_FEED_COOLDOWN;
@@ -26,7 +26,8 @@ const FEED_COOLDOWN_MIN = (() => {
 
 const COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
 
-const EXP_PER_FEED = 10;
+// Each feed gives +20 EXP (locked rule)
+const EXP_PER_FEED = 20;
 
 type FeedRequestBody = {
   tokenId?: string;
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // TODO (future): verify onchain that walletAddress owns tokenId
+    // TODO: In the future, you can verify onchain that walletAddress owns tokenId.
 
     const now = Date.now();
     const progress = getOrCreateProgress(tokenId, rarity);
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If already max level: just refresh cooldown
+    // If already max level: only refresh cooldown
     if (progress.level >= maxLevel) {
       progress.lastFeedAt = now;
       saveProgress(progress);
