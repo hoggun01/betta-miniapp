@@ -44,6 +44,14 @@ const BETTA_CONTRACT_ADDRESS = process.env
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
 
+// ✅ Backend base URL (VPS). Set in Vercel ENV: NEXT_PUBLIC_BETTA_BACKEND_URL=https://api.bettahatchery.xyz
+const BACKEND_URL = (process.env.NEXT_PUBLIC_BETTA_BACKEND_URL || "").replace(/\/+$/, "");
+
+// If env is missing, fallback to local Next.js routes (dev). In production, it should use VPS.
+const FEED_ENDPOINT = BACKEND_URL ? `${BACKEND_URL}/feed` : "/api/feed";
+const PROGRESS_ENDPOINT = BACKEND_URL ? `${BACKEND_URL}/progress` : "/api/progress";
+
+
 // Minimal ABI
 const BETTA_ABI = [
   {
@@ -243,7 +251,7 @@ async function fetchProgressForFishes(
   try {
     if (!fishes.length) return {};
 
-    const res = await fetch("/api/progress", {
+    const res = await fetch(PROGRESS_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -700,7 +708,7 @@ export default function AquariumPage() {
     setIsFeedLoading(true);
 
     try {
-      const res = await fetch("/api/feed", {
+      const res = await fetch(FEED_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
