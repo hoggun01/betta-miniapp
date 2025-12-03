@@ -44,13 +44,15 @@ const BETTA_CONTRACT_ADDRESS = process.env
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
 
-// ✅ Backend base URL (VPS). Set in Vercel ENV: NEXT_PUBLIC_BETTA_BACKEND_URL=https://api.bettahatchery.xyz
-const BACKEND_URL = (process.env.NEXT_PUBLIC_BETTA_BACKEND_URL || "").replace(/\/+$/, "");
+// ✅ Always use HTTPS in production (no mixed content)
+const BACKEND_BASE_URL = (
+  process.env.NEXT_PUBLIC_BETTA_BACKEND_URL || "https://api.bettahatchery.xyz"
+)
+  .trim()
+  .replace(/\/+$/, "");
 
-// If env is missing, fallback to local Next.js routes (dev). In production, it should use VPS.
-const FEED_ENDPOINT = BACKEND_URL ? `${BACKEND_URL}/feed` : "/api/feed";
-const PROGRESS_ENDPOINT = BACKEND_URL ? `${BACKEND_URL}/progress` : "/api/progress";
-
+const FEED_ENDPOINT = `${BACKEND_BASE_URL}/feed`;
+const PROGRESS_ENDPOINT = `${BACKEND_BASE_URL}/progress`;
 
 // Minimal ABI
 const BETTA_ABI = [
@@ -97,7 +99,7 @@ const RARITY_SPRITES: Record<Rarity, string> = {
 // EXP per feed (must match backend)
 const EXP_PER_FEED = 20;
 
-// ✅ FIXED: feed cooldown 30 menit (bisa kamu ubah nanti di sini)
+// ✅ cooldown frontend (display only). Backend is source of truth.
 const FEED_COOLDOWN_MIN = 30;
 const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
 
@@ -202,7 +204,7 @@ function persistNextFeedAt(nextFeedAt: number | null) {
   }
 }
 
-// Basic stat formula for battle status
+// Basic stat formula for battle status (UI only)
 function computeStats(rarity: Rarity, level: number): BattleStats {
   const rarityMultiplier = {
     COMMON: { hp: 1.0, str: 1.0, def: 1.0, agi: 1.0 },
@@ -244,7 +246,7 @@ function computeStats(rarity: Rarity, level: number): BattleStats {
   return { hp, str, def, agi, crit, dodge };
 }
 
-// 🔹 Load progress dari backend untuk semua ikan
+// 🔹 Load progress dari backend untuk semua ikan (expects: { fishes: [{tokenId, rarity}] })
 async function fetchProgressForFishes(
   fishes: MovingFish[]
 ): Promise<Record<string, FishProgress>> {
@@ -287,8 +289,8 @@ export default function AquariumPage() {
   const [fish, setFish] = useState<MovingFish[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isFeeding, setIsFeeding] = useState(false);
 
+  const [isFeeding, setIsFeeding] = useState(false);
   const [nextFeedAt, setNextFeedAt] = useState<number | null>(null);
   const [cooldownLabel, setCooldownLabel] = useState<string | null>(null);
   const [isFeedLoading, setIsFeedLoading] = useState(false);
@@ -301,6 +303,7 @@ export default function AquariumPage() {
   const [expGain, setExpGain] = useState<number | null>(null);
   const [expGainFishId, setExpGainFishId] = useState<string | null>(null);
 
+  // bootstrap miniapp + onchain fish + initial progress
   useEffect(() => {
     let cancelled = false;
 
@@ -568,6 +571,7 @@ export default function AquariumPage() {
     };
   }, []);
 
+  // load cooldown from storage
   useEffect(() => {
     const storedNext = loadNextFeedFromStorage();
     if (storedNext) {
@@ -575,6 +579,7 @@ export default function AquariumPage() {
     }
   }, []);
 
+  // fish movement loop
   useEffect(() => {
     let frame: number;
 
@@ -650,12 +655,14 @@ export default function AquariumPage() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  // feeding visual auto off
   useEffect(() => {
     if (!isFeeding) return;
     const id = setTimeout(() => setIsFeeding(false), 1500);
     return () => clearTimeout(id);
   }, [isFeeding]);
 
+  // cooldown label tick
   useEffect(() => {
     if (!nextFeedAt) {
       setCooldownLabel(null);
@@ -715,26 +722,41 @@ export default function AquariumPage() {
           tokenId: firstFish.tokenId.toString(),
           rarity: firstFish.rarity,
           walletAddress,
+          fid: fid ?? undefined,
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as any));
 
+      // ✅ handle cooldown from backend: { error:"COOLDOWN", retryAt }
       if (!res.ok) {
-        if (data.error === "ON_COOLDOWN" && typeof data.remainingMs === "number") {
+        if (data?.error === "COOLDOWN" && typeof data.retryAt === "number") {
+          const endAt = data.retryAt;
+          setNextFeedAt(endAt);
+          persistNextFeedAt(endAt);
+          return;
+        }
+
+        // legacy support
+        if (data?.error === "ON_COOLDOWN" && typeof data.remainingMs === "number") {
           const endAt = Date.now() + data.remainingMs;
           setNextFeedAt(endAt);
           persistNextFeedAt(endAt);
+          return;
         }
+
         console.warn("Feed error:", data);
         return;
       }
 
+      // success: backend returns lastFeedAt + cooldownMs in your latest version
       let endAt: number | null = null;
-      if (typeof data.cooldownMs === "number") {
+      if (typeof data?.retryAt === "number") {
+        endAt = data.retryAt;
+      } else if (typeof data?.lastFeedAt === "number" && typeof data?.cooldownMs === "number") {
+        endAt = data.lastFeedAt + data.cooldownMs;
+      } else if (typeof data?.cooldownMs === "number") {
         endAt = Date.now() + data.cooldownMs;
-      } else if (typeof data.remainingMs === "number") {
-        endAt = Date.now() + data.remainingMs;
       } else {
         endAt = Date.now() + FEED_COOLDOWN_MS;
       }
@@ -744,11 +766,12 @@ export default function AquariumPage() {
         persistNextFeedAt(endAt);
       }
 
+      // update progress if server returns it
       if (
-        typeof data.level === "number" &&
-        typeof data.exp === "number" &&
-        typeof data.expNeededNext === "number" &&
-        typeof data.isMax === "boolean"
+        typeof data?.level === "number" &&
+        typeof data?.exp === "number" &&
+        typeof data?.expNeededNext === "number" &&
+        typeof data?.isMax === "boolean"
       ) {
         const key = firstFish.tokenId.toString();
         setProgressByToken((prev) => ({
@@ -760,6 +783,13 @@ export default function AquariumPage() {
             isMax: data.isMax,
           },
         }));
+      } else {
+        // fallback: re-fetch progress if response doesn't include full fields
+        const refreshed = await fetchProgressForFishes([firstFish]);
+        const key = firstFish.tokenId.toString();
+        if (refreshed[key]) {
+          setProgressByToken((prev) => ({ ...prev, [key]: refreshed[key] }));
+        }
       }
 
       setIsFeeding(true);
@@ -1434,9 +1464,7 @@ function Badge({ label, value }: BadgeProps) {
       <span className="uppercase tracking-[0.18em] text-[9px] text-slate-300">
         {label}
       </span>
-      <span className="text-[10px] text-slate-100 font-semibold">
-        {value}
-      </span>
+      <span className="text-[10px] text-slate-100 font-semibold">{value}</span>
     </div>
   );
 }
