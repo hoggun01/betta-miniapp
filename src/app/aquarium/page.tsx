@@ -6,12 +6,13 @@ import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
 type Rarity = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "SPIRIT";
+type Facing = "left" | "right";
 
 type FishToken = {
   tokenId: bigint;
   rarity: Rarity;
-  imageUrl: string; // sprite used in aquarium
-  nftImageUrl?: string; // original NFT image from metadata
+  imageUrl: string; // sprite
+  nftImageUrl?: string; // metadata image
 };
 
 type MovingFish = FishToken & {
@@ -19,7 +20,7 @@ type MovingFish = FishToken & {
   y: number;
   vx: number;
   vy: number;
-  facing: "left" | "right";
+  facing: Facing;
 };
 
 type FishProgress = {
@@ -44,39 +45,22 @@ const BETTA_CONTRACT_ADDRESS = process.env
 const RPC_URL =
   process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
 
-// ✅ Always use HTTPS in production (no mixed content)
-const BACKEND_BASE_URL = (
-  process.env.NEXT_PUBLIC_BETTA_BACKEND_URL || "https://api.bettahatchery.xyz"
-)
-  .trim()
-  .replace(/\/+$/, "");
+// VPS backend base (Vercel ENV: NEXT_PUBLIC_BETTA_BACKEND_URL=https://api.bettahatchery.xyz)
+const BACKEND_URL = (process.env.NEXT_PUBLIC_BETTA_BACKEND_URL || "").replace(
+  /\/+$/,
+  ""
+);
 
-const FEED_ENDPOINT = `${BACKEND_BASE_URL}/feed`;
-const PROGRESS_ENDPOINT = `${BACKEND_BASE_URL}/progress`;
+const FEED_ENDPOINT = BACKEND_URL ? `${BACKEND_URL}/feed` : "/api/feed";
+const PROGRESS_ENDPOINT = BACKEND_URL
+  ? `${BACKEND_URL}/progress`
+  : "/api/progress";
 
-// Minimal ABI
+// ✅ FIX: sebelumnya ada backtick nyasar di string
+const OWNED_ENDPOINT = BACKEND_URL ? `${BACKEND_URL}/owned` : "/api/owned";
+
+// Minimal ABI (kita tetap pakai tokenURI)
 const BETTA_ABI = [
-  {
-    type: "function",
-    name: "nextTokenId",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "balanceOf",
-    stateMutability: "view",
-    inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ name: "balance", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "ownerOf",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "owner", type: "address" }],
-  },
   {
     type: "function",
     name: "tokenURI",
@@ -86,7 +70,6 @@ const BETTA_ABI = [
   },
 ] as const;
 
-// Map rarity to PNG in /public
 const RARITY_SPRITES: Record<Rarity, string> = {
   COMMON: "/common.png",
   UNCOMMON: "/uncommon.png",
@@ -96,17 +79,14 @@ const RARITY_SPRITES: Record<Rarity, string> = {
   SPIRIT: "/spirit.png",
 };
 
-// EXP per feed (must match backend)
 const EXP_PER_FEED = 20;
 
-// ✅ cooldown frontend (display only). Backend is source of truth.
+// UI cooldown display only (backend adalah source of truth)
 const FEED_COOLDOWN_MIN = 30;
 const FEED_COOLDOWN_MS = FEED_COOLDOWN_MIN * 60 * 1000;
 
-// LocalStorage key untuk cooldown client-side
 const LAST_FEED_STORAGE_KEY = "betta_last_feed_at_v1";
 
-// Max level per rarity (harus sama dengan backend)
 const MAX_LEVEL_BY_RARITY: Record<Rarity, number> = {
   COMMON: 15,
   UNCOMMON: 20,
@@ -126,7 +106,6 @@ function ipfsToHttp(uri: string): string {
 
 function detectRarityFromMetadata(meta: any): Rarity {
   if (!meta) return "COMMON";
-
   const attributeRarity = Array.isArray(meta.attributes)
     ? meta.attributes.find(
         (attr: any) =>
@@ -156,7 +135,7 @@ function createInitialMotion(index: number): {
   y: number;
   vx: number;
   vy: number;
-  facing: "left" | "right";
+  facing: Facing;
 } {
   const x = 15 + ((index * 20) % 60) + Math.random() * 6;
   const y = 25 + ((index * 12) % 40) + (Math.random() * 8 - 4);
@@ -165,13 +144,10 @@ function createInitialMotion(index: number): {
   const vx = (Math.random() > 0.5 ? 1 : -1) * baseSpeed;
   const vy = (Math.random() > 0.5 ? 1 : -1) * (0.04 + Math.random() * 0.03);
 
-  return {
-    x,
-    y,
-    vx,
-    vy,
-    facing: vx >= 0 ? "right" : "left",
-  };
+  // ✅ FIX: jangan pakai `as const` di ternary
+  const facing: Facing = vx >= 0 ? "right" : "left";
+
+  return { x, y, vx, vy, facing };
 }
 
 function loadNextFeedFromStorage(): number | null {
@@ -184,8 +160,7 @@ function loadNextFeedFromStorage(): number | null {
     const nextAt = last + FEED_COOLDOWN_MS;
     if (nextAt <= Date.now()) return null;
     return nextAt;
-  } catch (err) {
-    console.error("Failed to read last feed time from storage", err);
+  } catch {
     return null;
   }
 }
@@ -199,12 +174,9 @@ function persistNextFeedAt(nextFeedAt: number | null) {
     }
     const lastAt = nextFeedAt - FEED_COOLDOWN_MS;
     window.localStorage.setItem(LAST_FEED_STORAGE_KEY, String(lastAt));
-  } catch (err) {
-    console.error("Failed to save last feed time to storage", err);
-  }
+  } catch {}
 }
 
-// Basic stat formula for battle status (UI only)
 function computeStats(rarity: Rarity, level: number): BattleStats {
   const rarityMultiplier = {
     COMMON: { hp: 1.0, str: 1.0, def: 1.0, agi: 1.0 },
@@ -215,19 +187,18 @@ function computeStats(rarity: Rarity, level: number): BattleStats {
     LEGENDARY: { hp: 1.6, str: 1.6, def: 1.4, agi: 1.4 },
   }[rarity];
 
-  const baseHp = 100;
-  const baseStr = 20;
-  const baseDef = 15;
-  const baseAgi = 10;
+  const baseHp = 100,
+    baseStr = 20,
+    baseDef = 15,
+    baseAgi = 10;
 
   const hp = Math.round((baseHp + level * 12) * rarityMultiplier.hp);
   const str = Math.round((baseStr + level * 3) * rarityMultiplier.str);
   const def = Math.round((baseDef + level * 2.5) * rarityMultiplier.def);
   const agi = Math.round((baseAgi + level * 2) * rarityMultiplier.agi);
 
-  const baseCrit = 3;
-  const baseDodge = 3;
-
+  const baseCrit = 3,
+    baseDodge = 3;
   const rarityCritBonus = {
     COMMON: 0,
     UNCOMMON: 1,
@@ -246,17 +217,31 @@ function computeStats(rarity: Rarity, level: number): BattleStats {
   return { hp, str, def, agi, crit, dodge };
 }
 
-// 🔹 Load progress dari backend untuk semua ikan (expects: { fishes: [{tokenId, rarity}] })
+// ✅ NEW: ambil tokenIds milik wallet langsung dari backend (cache event Transfer)
+async function fetchOwnedTokenIds(walletAddress: string): Promise<bigint[]> {
+  if (!OWNED_ENDPOINT) return [];
+  const url = `${OWNED_ENDPOINT}?wallet=${encodeURIComponent(walletAddress)}`;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!data?.ok || !Array.isArray(data.tokenIds)) return [];
+  return data.tokenIds.map((x: any) => BigInt(String(x)));
+}
+
+// 🔹 progress fetch: kirim walletAddress supaya backend ambil key wallet:tokenId (biar ga reset)
 async function fetchProgressForFishes(
-  fishes: MovingFish[]
+  fishes: MovingFish[],
+  walletAddress: string | null,
+  fid: number | null
 ): Promise<Record<string, FishProgress>> {
   try {
     if (!fishes.length) return {};
-
     const res = await fetch(PROGRESS_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        walletAddress: walletAddress || undefined,
+        fid: fid || undefined,
         fishes: fishes.map((f) => ({
           tokenId: f.tokenId.toString(),
           rarity: f.rarity,
@@ -264,17 +249,9 @@ async function fetchProgressForFishes(
       }),
     });
 
-    if (!res.ok) {
-      console.warn("Failed to fetch progress, status:", res.status);
-      return {};
-    }
-
+    if (!res.ok) return {};
     const data = await res.json();
-
-    if (!data || !data.ok || !data.progressByToken) {
-      return {};
-    }
-
+    if (!data?.ok || !data.progressByToken) return {};
     return data.progressByToken as Record<string, FishProgress>;
   } catch (err) {
     console.error("fetchProgressForFishes error", err);
@@ -303,7 +280,6 @@ export default function AquariumPage() {
   const [expGain, setExpGain] = useState<number | null>(null);
   const [expGainFishId, setExpGainFishId] = useState<string | null>(null);
 
-  // bootstrap miniapp + onchain fish + initial progress
   useEffect(() => {
     let cancelled = false;
 
@@ -340,14 +316,13 @@ export default function AquariumPage() {
           params: [],
         })) as string[];
 
-        let address = accounts && accounts[0];
-
+        let address = accounts?.[0];
         if (!address) {
           const requested = (await (provider as any).request({
             method: "eth_requestAccounts",
             params: [],
           })) as string[];
-          address = requested && requested[0];
+          address = requested?.[0];
         }
 
         if (!address) {
@@ -364,193 +339,87 @@ export default function AquariumPage() {
           transport: http(RPC_URL),
         });
 
-        const ZERO = BigInt(0);
+        // ✅ FAST PATH: pakai backend /owned untuk dapet tokenIds milik wallet
+        let owned: bigint[] = [];
+        if (BACKEND_URL) {
+          owned = await fetchOwnedTokenIds(address);
+        }
 
-        const balance = (await client.readContract({
-          address: BETTA_CONTRACT_ADDRESS,
-          abi: BETTA_ABI,
-          functionName: "balanceOf",
-          args: [address as `0x${string}`],
-        })) as bigint;
-
-        if (balance === ZERO) {
+        // fallback kalau /owned gagal: tampilkan error yang jelas (biar ga scan ownerOf ribuan)
+        if (!owned.length) {
           setFish([]);
+          setError(
+            BACKEND_URL
+              ? "No owned tokens returned by backend. Check /owned endpoint & RPC logs."
+              : "Backend URL not configured. Please set NEXT_PUBLIC_BETTA_BACKEND_URL."
+          );
           setIsLoading(false);
           await sdk.actions.ready();
           return;
         }
 
-        const balanceNum = Number(balance);
-
-        const nextTokenIdValue = (await client.readContract({
-          address: BETTA_CONTRACT_ADDRESS,
-          abi: BETTA_ABI,
-          functionName: "nextTokenId",
-          args: [],
-        })) as bigint;
-
-        const ONE = BigInt(1);
-
-        if (nextTokenIdValue <= ONE) {
-          setFish([]);
-          setIsLoading(false);
-          await sdk.actions.ready();
-          return;
-        }
-
-        const maxTokenId = nextTokenIdValue - ONE;
-
-        const HARD_CAP = BigInt(500);
-        const effectiveMax = maxTokenId > HARD_CAP ? HARD_CAP : maxTokenId;
-
-        const tokenIds: bigint[] = [];
-        for (let id = ONE; id <= effectiveMax; id = id + ONE) {
-          tokenIds.push(id);
-        }
+        // tokenURI multicall untuk tokenIds milik user
+        const uriResults = await client.multicall({
+          contracts: owned.map((id) => ({
+            address: BETTA_CONTRACT_ADDRESS,
+            abi: BETTA_ABI,
+            functionName: "tokenURI",
+            args: [id],
+          })),
+          allowFailure: true,
+        });
 
         const fishes: MovingFish[] = [];
-        let index = 0;
-        let found = 0;
-        let hitRateLimit = false;
+        let idx = 0;
 
-        const BATCH_SIZE = 24;
-        const scanStartedAt = Date.now();
-        const MAX_SCAN_MS = 12000;
-
-        const lowerAddress = address.toLowerCase();
-
-        for (let i = 0; i < tokenIds.length; i += BATCH_SIZE) {
-          if (Date.now() - scanStartedAt > MAX_SCAN_MS) break;
-
-          const batchIds = tokenIds.slice(i, i + BATCH_SIZE);
-
-          let ownerResults: any[];
-          try {
-            ownerResults = await client.multicall({
-              contracts: batchIds.map((id) => ({
-                address: BETTA_CONTRACT_ADDRESS,
-                abi: BETTA_ABI,
-                functionName: "ownerOf",
-                args: [id],
-              })),
-              allowFailure: true,
-            });
-          } catch (err: any) {
-            const code = err?.code;
-            const message: string = err?.shortMessage || err?.message || "";
-            if (code === -32016 || message.toLowerCase().includes("rate limit")) {
-              console.warn("RPC rate limit during ownerOf multicall", err);
-              hitRateLimit = true;
-              break;
-            }
-            console.error("Error in ownerOf multicall", err);
-            break;
-          }
-
-          const myTokenIds: bigint[] = [];
-          ownerResults.forEach((res, idx) => {
-            if (!res || res.status !== "success" || !res.result) return;
-            const owner = (res.result as string).toLowerCase();
-            if (owner === lowerAddress) {
-              myTokenIds.push(batchIds[idx]);
-            }
-          });
-
-          if (myTokenIds.length === 0) {
-            if (found >= balanceNum) break;
+        for (let i = 0; i < owned.length; i++) {
+          const tokenId = owned[i];
+          const uriRes: any = uriResults[i];
+          if (!uriRes || uriRes.status !== "success" || !uriRes.result)
             continue;
-          }
 
-          let uriResults: any[];
+          const rawUri = uriRes.result as string;
           try {
-            uriResults = await client.multicall({
-              contracts: myTokenIds.map((id) => ({
-                address: BETTA_CONTRACT_ADDRESS,
-                abi: BETTA_ABI,
-                functionName: "tokenURI",
-                args: [id],
-              })),
-              allowFailure: true,
+            const metadataUrl = ipfsToHttp(rawUri);
+            const r = await fetch(metadataUrl);
+            const meta = r.ok ? await r.json() : null;
+
+            const rarity = detectRarityFromMetadata(meta);
+            const spriteUrl = RARITY_SPRITES[rarity];
+            const nftImageUrl = ipfsToHttp(
+              meta?.image || meta?.image_url || ""
+            );
+
+            const motion = createInitialMotion(idx++);
+
+            fishes.push({
+              tokenId,
+              rarity,
+              imageUrl: spriteUrl,
+              nftImageUrl,
+              x: motion.x,
+              y: motion.y,
+              vx: motion.vx,
+              vy: motion.vy,
+              facing: motion.facing,
             });
-          } catch (err: any) {
-            const code = err?.code;
-            const message: string = err?.shortMessage || err?.message || "";
-            if (code === -32016 || message.toLowerCase().includes("rate limit")) {
-              console.warn("RPC rate limit during tokenURI multicall", err);
-              hitRateLimit = true;
-              break;
-            }
-            console.error("Error in tokenURI multicall", err);
-            break;
+          } catch (e) {
+            console.error("metadata load error", tokenId.toString(), e);
           }
-
-          for (let j = 0; j < myTokenIds.length; j++) {
-            const tokenId = myTokenIds[j];
-            const uriRes = uriResults[j];
-
-            if (!uriRes || uriRes.status !== "success" || !uriRes.result)
-              continue;
-
-            const rawUri = uriRes.result as string;
-
-            try {
-              const metadataUrl = ipfsToHttp(rawUri);
-              const res = await fetch(metadataUrl);
-              const meta = res.ok ? await res.json() : null;
-
-              const rarity = detectRarityFromMetadata(meta);
-              const spriteUrl = RARITY_SPRITES[rarity];
-              const nftImageUrl = ipfsToHttp(
-                meta?.image || meta?.image_url || ""
-              );
-
-              const motion = createInitialMotion(index++);
-
-              fishes.push({
-                tokenId,
-                rarity,
-                imageUrl: spriteUrl,
-                nftImageUrl,
-                x: motion.x,
-                y: motion.y,
-                vx: motion.vx,
-                vy: motion.vy,
-                facing: motion.facing,
-              });
-
-              found += 1;
-              if (found >= balanceNum) break;
-            } catch (metaError) {
-              console.error(
-                "Error loading metadata for token",
-                tokenId.toString(),
-                metaError
-              );
-            }
-          }
-
-          if (found >= balanceNum || hitRateLimit) break;
         }
 
-        // 🔹 Load progress awal dari backend
-        let initialProgress: Record<string, FishProgress> = {};
-        if (fishes.length > 0) {
-          initialProgress = await fetchProgressForFishes(fishes);
-        }
+        // ✅ load progress dari backend (dengan walletAddress + fid)
+        const initialProgress = await fetchProgressForFishes(
+          fishes,
+          address,
+          ctxFid ?? null
+        );
 
         if (!cancelled) {
           setFish(fishes);
-
           if (Object.keys(initialProgress).length > 0) {
             setProgressByToken(initialProgress);
           }
-
-          if (balanceNum > 0 && fishes.length === 0 && hitRateLimit) {
-            setError(
-              "We hit an RPC rate limit while loading your fish. Please try reopening your aquarium in a moment."
-            );
-          }
-
           setIsLoading(false);
         }
 
@@ -571,53 +440,39 @@ export default function AquariumPage() {
     };
   }, []);
 
-  // load cooldown from storage
   useEffect(() => {
     const storedNext = loadNextFeedFromStorage();
-    if (storedNext) {
-      setNextFeedAt(storedNext);
-    }
+    if (storedNext) setNextFeedAt(storedNext);
   }, []);
 
-  // fish movement loop
   useEffect(() => {
     let frame: number;
-
     const animate = () => {
       setFish((prev) =>
         prev.map((fish) => {
           let { x, y, vx, vy, facing } = fish;
 
-          const wanderStrengthX = 0.01;
-          const wanderStrengthY = 0.008;
+          vx += (Math.random() - 0.5) * 0.01;
+          vy += (Math.random() - 0.5) * 0.008;
 
-          vx += (Math.random() - 0.5) * wanderStrengthX;
-          vy += (Math.random() - 0.5) * wanderStrengthY;
+          const minVx = 0.04,
+            maxVx = 0.16,
+            minVy = 0.02,
+            maxVy = 0.1;
 
-          const minVx = 0.04;
-          const maxVx = 0.16;
-          const minVy = 0.02;
-          const maxVy = 0.1;
+          if (Math.abs(vx) < minVx) vx = (vx >= 0 ? 1 : -1) * minVx;
+          else if (Math.abs(vx) > maxVx) vx = (vx >= 0 ? 1 : -1) * maxVx;
 
-          if (Math.abs(vx) < minVx) {
-            vx = (vx >= 0 ? 1 : -1) * minVx;
-          } else if (Math.abs(vx) > maxVx) {
-            vx = (vx >= 0 ? 1 : -1) * maxVx;
-          }
-
-          if (Math.abs(vy) < minVy) {
-            vy = (vy >= 0 ? 1 : -1) * minVy;
-          } else if (Math.abs(vy) > maxVy) {
-            vy = (vy >= 0 ? 1 : -1) * maxVy;
-          }
+          if (Math.abs(vy) < minVy) vy = (vy >= 0 ? 1 : -1) * minVy;
+          else if (Math.abs(vy) > maxVy) vy = (vy >= 0 ? 1 : -1) * maxVy;
 
           x += vx;
           y += vy;
 
-          const minX = 10;
-          const maxX = 90;
-          const minY = 18;
-          const maxY = 82;
+          const minX = 10,
+            maxX = 90,
+            minY = 18,
+            maxY = 82;
 
           if (x < minX) {
             x = minX;
@@ -637,14 +492,7 @@ export default function AquariumPage() {
             vy = -Math.abs(vy);
           }
 
-          return {
-            ...fish,
-            x,
-            y,
-            vx,
-            vy,
-            facing,
-          };
+          return { ...fish, x, y, vx, vy, facing };
         })
       );
 
@@ -655,14 +503,12 @@ export default function AquariumPage() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  // feeding visual auto off
   useEffect(() => {
     if (!isFeeding) return;
     const id = setTimeout(() => setIsFeeding(false), 1500);
     return () => clearTimeout(id);
   }, [isFeeding]);
 
-  // cooldown label tick
   useEffect(() => {
     if (!nextFeedAt) {
       setCooldownLabel(null);
@@ -677,14 +523,14 @@ export default function AquariumPage() {
         persistNextFeedAt(null);
         return;
       }
-
       const totalSec = Math.floor(diff / 1000);
       const minutes = Math.floor(totalSec / 60);
       const seconds = totalSec % 60;
-
-      const mm = minutes.toString().padStart(2, "0");
-      const ss = seconds.toString().padStart(2, "0");
-      setCooldownLabel(`${mm}:${ss}`);
+      setCooldownLabel(
+        `${minutes.toString().padStart(2, "0")}:${seconds
+          .toString()
+          .padStart(2, "0")}`
+      );
     };
 
     update();
@@ -701,15 +547,15 @@ export default function AquariumPage() {
       LEGENDARY: 0,
       SPIRIT: 0,
     };
-    for (const f of fish) {
-      counts[f.rarity] += 1;
-    }
+    for (const f of fish) counts[f.rarity] += 1;
     return counts;
   }, [fish]);
 
+  const isOnCooldown = nextFeedAt !== null && nextFeedAt > Date.now();
+
   const handleFeedClick = async () => {
     if (!fish.length || !walletAddress || isFeedLoading) return;
-    if (nextFeedAt && nextFeedAt > Date.now()) return;
+    if (isOnCooldown) return;
 
     const firstFish = fish[0];
     setIsFeedLoading(true);
@@ -726,54 +572,38 @@ export default function AquariumPage() {
         }),
       });
 
-      const data = await res.json().catch(() => ({} as any));
+      const data = await res.json().catch(() => ({}));
 
-      // ✅ handle cooldown from backend: { error:"COOLDOWN", retryAt }
       if (!res.ok) {
-        if (data?.error === "COOLDOWN" && typeof data.retryAt === "number") {
-          const endAt = data.retryAt;
-          setNextFeedAt(endAt);
-          persistNextFeedAt(endAt);
-          return;
-        }
-
-        // legacy support
-        if (data?.error === "ON_COOLDOWN" && typeof data.remainingMs === "number") {
+        if (
+          data?.error === "ON_COOLDOWN" &&
+          typeof data.remainingMs === "number"
+        ) {
           const endAt = Date.now() + data.remainingMs;
           setNextFeedAt(endAt);
           persistNextFeedAt(endAt);
-          return;
         }
-
         console.warn("Feed error:", data);
         return;
       }
 
-      // success: backend returns lastFeedAt + cooldownMs in your latest version
       let endAt: number | null = null;
-      if (typeof data?.retryAt === "number") {
-        endAt = data.retryAt;
-      } else if (typeof data?.lastFeedAt === "number" && typeof data?.cooldownMs === "number") {
-        endAt = data.lastFeedAt + data.cooldownMs;
-      } else if (typeof data?.cooldownMs === "number") {
+      if (typeof data.cooldownMs === "number")
         endAt = Date.now() + data.cooldownMs;
-      } else {
-        endAt = Date.now() + FEED_COOLDOWN_MS;
-      }
+      else if (typeof data.remainingMs === "number")
+        endAt = Date.now() + data.remainingMs;
+      else endAt = Date.now() + FEED_COOLDOWN_MS;
 
-      if (endAt !== null) {
-        setNextFeedAt(endAt);
-        persistNextFeedAt(endAt);
-      }
+      setNextFeedAt(endAt);
+      persistNextFeedAt(endAt);
 
-      // update progress if server returns it
+      const key = firstFish.tokenId.toString();
       if (
-        typeof data?.level === "number" &&
-        typeof data?.exp === "number" &&
-        typeof data?.expNeededNext === "number" &&
-        typeof data?.isMax === "boolean"
+        typeof data.level === "number" &&
+        typeof data.exp === "number" &&
+        typeof data.expNeededNext === "number" &&
+        typeof data.isMax === "boolean"
       ) {
-        const key = firstFish.tokenId.toString();
         setProgressByToken((prev) => ({
           ...prev,
           [key]: {
@@ -783,18 +613,11 @@ export default function AquariumPage() {
             isMax: data.isMax,
           },
         }));
-      } else {
-        // fallback: re-fetch progress if response doesn't include full fields
-        const refreshed = await fetchProgressForFishes([firstFish]);
-        const key = firstFish.tokenId.toString();
-        if (refreshed[key]) {
-          setProgressByToken((prev) => ({ ...prev, [key]: refreshed[key] }));
-        }
       }
 
       setIsFeeding(true);
       setExpGain(EXP_PER_FEED);
-      setExpGainFishId(firstFish.tokenId.toString());
+      setExpGainFishId(key);
 
       window.setTimeout(() => {
         setExpGain(null);
@@ -815,8 +638,6 @@ export default function AquariumPage() {
   const handleBattleClick = () => {
     console.log("BATTLE clicked");
   };
-
-  const isOnCooldown = nextFeedAt !== null && nextFeedAt > Date.now();
 
   if (isInMiniApp === false) {
     return (
@@ -869,16 +690,9 @@ export default function AquariumPage() {
             </div>
 
             <div className="bubble-layer">
-              <div className="bubble bubble-1" />
-              <div className="bubble bubble-2" />
-              <div className="bubble bubble-3" />
-              <div className="bubble bubble-4" />
-              <div className="bubble bubble-5" />
-              <div className="bubble bubble-6" />
-              <div className="bubble bubble-7" />
-              <div className="bubble bubble-8" />
-              <div className="bubble bubble-9" />
-              <div className="bubble bubble-10" />
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className={`bubble bubble-${i + 1}`} />
+              ))}
             </div>
 
             {isLoading && (
@@ -1027,7 +841,6 @@ export default function AquariumPage() {
           )}
         </div>
 
-        {/* MY FISH PAGE SECTION */}
         {showMyFish && !!fish.length && (
           <section className="mt-3 w-full rounded-2xl bg-slate-900/80 border border-slate-700/80 px-4 py-3 space-y-3">
             <div className="flex items-center justify-between">
@@ -1038,6 +851,7 @@ export default function AquariumPage() {
                 Feed gives +{EXP_PER_FEED} EXP
               </span>
             </div>
+
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {fish.map((f) => {
                 const key = f.tokenId.toString();
@@ -1116,39 +930,24 @@ export default function AquariumPage() {
                             style={{ width: `${barPercent}%` }}
                           />
                         </div>
+
                         <p className="text-[10px] text-slate-300 mt-0.5">
                           {expText}
                         </p>
 
                         <div className="grid grid-cols-3 gap-x-3 gap-y-1 mt-1.5 text-[10px] text-slate-200">
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-400">HP</span>
-                            <span className="font-semibold">{stats.hp}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-400">STR</span>
-                            <span className="font-semibold">{stats.str}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-400">DEF</span>
-                            <span className="font-semibold">{stats.def}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-400">AGI</span>
-                            <span className="font-semibold">{stats.agi}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-400">CRIT</span>
-                            <span className="font-semibold">
-                              {stats.crit.toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-400">DODGE</span>
-                            <span className="font-semibold">
-                              {stats.dodge.toFixed(1)}%
-                            </span>
-                          </div>
+                          <StatRow label="HP" value={stats.hp} />
+                          <StatRow label="STR" value={stats.str} />
+                          <StatRow label="DEF" value={stats.def} />
+                          <StatRow label="AGI" value={stats.agi} />
+                          <StatRow
+                            label="CRIT"
+                            value={`${stats.crit.toFixed(1)}%`}
+                          />
+                          <StatRow
+                            label="DODGE"
+                            value={`${stats.dodge.toFixed(1)}%`}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1169,22 +968,18 @@ export default function AquariumPage() {
             0 0 40px rgba(56, 189, 248, 0.45);
           backdrop-filter: blur(1px);
         }
-
         .fish-wrapper {
           position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
         }
-
         .fish-facing-right {
           transform: scaleX(1);
         }
-
         .fish-facing-left {
           transform: scaleX(-1);
         }
-
         .fish-img {
           width: 4.5rem;
           height: 4.5rem;
@@ -1205,7 +1000,6 @@ export default function AquariumPage() {
           animation: expFloat 1s ease-out forwards;
           pointer-events: none;
         }
-
         @keyframes expFloat {
           0% {
             transform: translate(-50%, 4px);
@@ -1225,25 +1019,21 @@ export default function AquariumPage() {
             drop-shadow(0 0 2px rgba(148, 163, 184, 0.9))
             drop-shadow(0 0 6px rgba(148, 163, 184, 0.6));
         }
-
         .rarity-uncommon .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(52, 211, 153, 0.95))
             drop-shadow(0 0 7px rgba(52, 211, 153, 0.7));
         }
-
         .rarity-rare .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(168, 85, 247, 0.95))
             drop-shadow(0 0 8px rgba(168, 85, 247, 0.75));
         }
-
         .rarity-epic .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(239, 68, 68, 0.95))
             drop-shadow(0 0 9px rgba(248, 113, 113, 0.8));
         }
-
         .rarity-legendary .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(255, 255, 255, 0.9))
@@ -1251,13 +1041,11 @@ export default function AquariumPage() {
             drop-shadow(0 0 10px rgba(250, 204, 21, 0.85))
             drop-shadow(0 0 12px rgba(59, 130, 246, 0.85));
         }
-
         .rarity-spirit .fish-img {
           filter:
             drop-shadow(0 0 2px rgba(129, 140, 248, 0.95))
             drop-shadow(0 0 9px rgba(56, 189, 248, 0.8));
         }
-
         .feed-mode .fish-img {
           filter:
             drop-shadow(0 0 3px rgba(250, 250, 250, 0.95))
@@ -1275,7 +1063,6 @@ export default function AquariumPage() {
           opacity: 0;
           animation: pelletDrop 1.6s ease-out forwards;
         }
-
         @keyframes pelletDrop {
           0% {
             transform: translateY(-10px);
@@ -1300,20 +1087,17 @@ export default function AquariumPage() {
           pointer-events: none;
           z-index: 0;
         }
-
         .shadow-fish {
           position: absolute;
           width: 130px;
           opacity: 0;
           filter: blur(3px);
         }
-
         .shadow-fish-ltr {
           top: 50%;
           animation: shadowSwimLeftToRight 60s linear infinite;
           animation-delay: 12s;
         }
-
         @keyframes shadowSwimLeftToRight {
           0% {
             transform: translateX(-25%) scaleX(1);
@@ -1341,7 +1125,6 @@ export default function AquariumPage() {
           pointer-events: none;
           z-index: 1;
         }
-
         .bubble {
           position: absolute;
           bottom: -40px;
@@ -1355,61 +1138,51 @@ export default function AquariumPage() {
           animation-timing-function: linear;
           animation-iteration-count: infinite;
         }
-
         .bubble-1 {
           left: 12%;
           animation-duration: 9s;
           animation-delay: 1s;
         }
-
         .bubble-2 {
           left: 22%;
           animation-duration: 11s;
           animation-delay: 4s;
         }
-
         .bubble-3 {
           left: 32%;
           animation-duration: 8s;
           animation-delay: 7s;
         }
-
         .bubble-4 {
           left: 45%;
           animation-duration: 10s;
           animation-delay: 2s;
         }
-
         .bubble-5 {
           left: 55%;
           animation-duration: 12s;
           animation-delay: 6s;
         }
-
         .bubble-6 {
           left: 65%;
           animation-duration: 9.5s;
           animation-delay: 3s;
         }
-
         .bubble-7 {
           left: 75%;
           animation-duration: 7.5s;
           animation-delay: 8s;
         }
-
         .bubble-8 {
           left: 82%;
           animation-duration: 10.5s;
           animation-delay: 5s;
         }
-
         .bubble-9 {
           left: 18%;
           animation-duration: 8.5s;
           animation-delay: 9s;
         }
-
         .bubble-10 {
           left: 50%;
           animation-duration: 7s;
@@ -1437,26 +1210,25 @@ export default function AquariumPage() {
   );
 }
 
-type BadgeProps = {
-  label: string;
-  value: number;
-};
+function StatRow({ label, value }: { label: string; value: any }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-slate-400">{label}</span>
+      <span className="font-semibold">{value}</span>
+    </div>
+  );
+}
+
+type BadgeProps = { label: string; value: number };
 
 function Badge({ label, value }: BadgeProps) {
   let dotColorClass = "bg-slate-400";
-
   const lower = label.toLowerCase();
-  if (lower === "uncommon") {
-    dotColorClass = "bg-emerald-400";
-  } else if (lower === "rare") {
-    dotColorClass = "bg-sky-400";
-  } else if (lower === "epic") {
-    dotColorClass = "bg-amber-400";
-  } else if (lower === "legendary") {
-    dotColorClass = "bg-red-500";
-  } else if (lower === "spirit") {
-    dotColorClass = "bg-indigo-400";
-  }
+  if (lower === "uncommon") dotColorClass = "bg-emerald-400";
+  else if (lower === "rare") dotColorClass = "bg-sky-400";
+  else if (lower === "epic") dotColorClass = "bg-amber-400";
+  else if (lower === "legendary") dotColorClass = "bg-red-500";
+  else if (lower === "spirit") dotColorClass = "bg-indigo-400";
 
   return (
     <div className="inline-flex items-center gap-1 rounded-full bg-slate-900/70 px-2.5 py-1 border border-slate-700/70">
